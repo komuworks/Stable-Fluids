@@ -234,8 +234,14 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
 
   const color = pointer.hue;
   const dyeFactor = (isDrag ? 1.5 : 1) * dyeVelocityFactor;
-  for (let oy = -2; oy <= 2; oy += 1) {
-    for (let ox = -2; ox <= 2; ox += 1) {
+  const dyeRadius = 2;
+  const dyeRadiusSq = dyeRadius * dyeRadius;
+  for (let oy = -dyeRadius; oy <= dyeRadius; oy += 1) {
+    for (let ox = -dyeRadius; ox <= dyeRadius; ox += 1) {
+      if (ox * ox + oy * oy > dyeRadiusSq) {
+        continue;
+      }
+
       const dyeI = Math.max(1, Math.min(N, end.i + ox));
       const dyeJ = Math.max(1, Math.min(N, end.j + oy));
       const dyeK = idx(dyeI, dyeJ);
