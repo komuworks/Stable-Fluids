@@ -259,17 +259,41 @@ function cubicBezierPoint(p0, p1, p2, p3, t) {
   );
 }
 
-function addInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy) {
-  const spacing = Math.max(1, SIM.impulseSpacing);
-  const distance = Math.hypot(toX - fromX, toY - fromY);
-  const steps = Math.max(1, Math.ceil(distance / spacing));
-  const stepElapsedMs = elapsedMs / steps;
+function bezierArcLength(p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y, samples = 6) {
+  let length = 0;
+  let lastX = p0x;
+  let lastY = p0y;
 
-  const handleScale = 0.28;
-  const c1x = fromX + prevDx * handleScale;
-  const c1y = fromY + prevDy * handleScale;
-  const c2x = toX - (toX - fromX) * handleScale;
-  const c2y = toY - (toY - fromY) * handleScale;
+  for (let i = 1; i <= samples; i += 1) {
+    const t = i / samples;
+    const x = cubicBezierPoint(p0x, p1x, p2x, p3x, t);
+    const y = cubicBezierPoint(p0y, p1y, p2y, p3y, t);
+    length += Math.hypot(x - lastX, y - lastY);
+    lastX = x;
+    lastY = y;
+  }
+
+  return length;
+}
+
+function addInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy, currDx, currDy) {
+  const spacing = Math.max(1, SIM.impulseSpacing);
+
+  // Cubic Hermite tangents converted to Bezier handles for C1 continuity.
+  const tangentSmoothing = 0.7;
+  const m0x = prevDx * tangentSmoothing;
+  const m0y = prevDy * tangentSmoothing;
+  const m1x = currDx * tangentSmoothing;
+  const m1y = currDy * tangentSmoothing;
+
+  const c1x = fromX + m0x / 3;
+  const c1y = fromY + m0y / 3;
+  const c2x = toX - m1x / 3;
+  const c2y = toY - m1y / 3;
+
+  const curveLength = bezierArcLength(fromX, fromY, c1x, c1y, c2x, c2y, toX, toY);
+  const steps = Math.max(1, Math.ceil(curveLength / spacing));
+  const stepElapsedMs = elapsedMs / steps;
 
   for (let step = 1; step <= steps; step += 1) {
     const t0 = (step - 1) / steps;
@@ -395,6 +419,8 @@ function onPointerMove(e) {
     pointer.down,
     pointer.prevDx,
     pointer.prevDy,
+    dx,
+    dy,
   );
   pointer.prevDx = dx;
   pointer.prevDy = dy;
