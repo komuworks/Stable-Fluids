@@ -9,6 +9,9 @@ const SIM = {
   hoverForceScale: 140,
   dragForceScale: 240,
   maxPointerSpeed: 7,
+  movementForceGain: 0.22,
+  minForceMultiplier: 0.35,
+  maxForceMultiplier: 2.6,
   forceCenterOffset: 2.5,
   dyeScale: 120,
   dragDyeBoost: 1.5,
@@ -225,10 +228,14 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
   const speedY = dj / dt;
   const speed = Math.hypot(speedX, speedY);
   const speedScale = speed > SIM.maxPointerSpeed ? SIM.maxPointerSpeed / speed : 1;
-  const forceScale = isDrag ? SIM.dragForceScale : SIM.hoverForceScale;
-  const forceX = speedX * speedScale * forceScale;
-  const forceY = speedY * speedScale * forceScale;
   const moveLen = Math.hypot(di, dj);
+  const movementMultiplier = Math.max(
+    SIM.minForceMultiplier,
+    Math.min(SIM.maxForceMultiplier, 1 + moveLen * SIM.movementForceGain),
+  );
+  const forceScale = isDrag ? SIM.dragForceScale : SIM.hoverForceScale;
+  const forceX = speedX * speedScale * forceScale * movementMultiplier;
+  const forceY = speedY * speedScale * forceScale * movementMultiplier;
   const dirI = moveLen > 0 ? di / moveLen : 0;
   const dirJ = moveLen > 0 ? dj / moveLen : 0;
   const forceCenterI = end.i + dirI * SIM.forceCenterOffset;
