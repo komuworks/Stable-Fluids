@@ -117,21 +117,21 @@
       <div class="controls">
         <div class="control-row">
           <label for="forceAmount">力の量</label>
-          <input id="forceAmount" type="range" min="1" max="2600" step="1" value="1" />
-          <input id="forceAmountNumber" type="number" min="1" max="2600" step="1" value="1" />
-          <output for="forceAmount" id="forceAmountValue">1</output>
+          <input id="forceAmount" type="range" min="1" max="2600" step="1" value="5" />
+          <input id="forceAmountNumber" type="number" min="1" max="2600" step="1" value="5" />
+          <output for="forceAmount" id="forceAmountValue">5</output>
         </div>
         <div class="control-row">
           <label for="dyeAmount">染料の量</label>
-          <input id="dyeAmount" type="range" min="20" max="2000" step="1" value="120" />
-          <input id="dyeAmountNumber" type="number" min="20" max="2000" step="1" value="120" />
-          <output for="dyeAmount" id="dyeAmountValue">120</output>
+          <input id="dyeAmount" type="range" min="20" max="2000" step="1" value="20" />
+          <input id="dyeAmountNumber" type="number" min="20" max="2000" step="1" value="20" />
+          <output for="dyeAmount" id="dyeAmountValue">20</output>
         </div>
         <div class="control-row">
           <label for="dyeBrushSize">染料ブラシサイズ(px)</label>
-          <input id="dyeBrushSize" type="range" min="1" max="12" step="1" value="2" />
-          <input id="dyeBrushSizeNumber" type="number" min="1" max="12" step="1" value="2" />
-          <output for="dyeBrushSize" id="dyeBrushSizeValue">2px</output>
+          <input id="dyeBrushSize" type="range" min="1" max="12" step="1" value="1" />
+          <input id="dyeBrushSizeNumber" type="number" min="1" max="12" step="1" value="1" />
+          <output for="dyeBrushSize" id="dyeBrushSizeValue">1px</output>
         </div>
         <div class="control-row">
           <label for="forceVelocityResponse">力の移動量応答</label>
@@ -154,32 +154,32 @@
         </div>
         <div class="control-row">
           <label for="impulseSpacing">注入間隔(px)</label>
-          <input id="impulseSpacing" type="range" min="2" max="80" step="1" value="20" />
-          <input id="impulseSpacingNumber" type="number" min="2" max="80" step="1" value="20" />
-          <output for="impulseSpacing" id="impulseSpacingValue">20.0px</output>
+          <input id="impulseSpacing" type="range" min="2" max="80" step="1" value="2" />
+          <input id="impulseSpacingNumber" type="number" min="2" max="80" step="1" value="2" />
+          <output for="impulseSpacing" id="impulseSpacingValue">2.0px</output>
         </div>
         <div class="control-row">
           <label for="clickForceAmount">クリック時の力の強さ</label>
-          <input id="clickForceAmount" type="range" min="1" max="120" step="0.1" value="36" />
-          <input id="clickForceAmountNumber" type="number" min="1" max="120" step="0.1" value="36" />
-          <output for="clickForceAmount" id="clickForceAmountValue">36.0</output>
+          <input id="clickForceAmount" type="range" min="1" max="120" step="0.1" value="25" />
+          <input id="clickForceAmountNumber" type="number" min="1" max="120" step="0.1" value="25" />
+          <output for="clickForceAmount" id="clickForceAmountValue">25.0</output>
         </div>
         <div class="control-row">
           <label for="clickDyeAmount">クリック時の染料の量</label>
-          <input id="clickDyeAmount" type="range" min="0.1" max="12" step="0.1" value="2.6" />
-          <input id="clickDyeAmountNumber" type="number" min="0.1" max="12" step="0.1" value="2.6" />
-          <output for="clickDyeAmount" id="clickDyeAmountValue">2.6</output>
+          <input id="clickDyeAmount" type="range" min="0.1" max="12" step="0.1" value="12" />
+          <input id="clickDyeAmountNumber" type="number" min="0.1" max="12" step="0.1" value="12" />
+          <output for="clickDyeAmount" id="clickDyeAmountValue">12.0</output>
         </div>
         <div class="control-row control-row--select">
           <label for="simulationResolution">シミュレーション細かさ</label>
           <select id="simulationResolution">
             <option value="1">標準 (1/1)</option>
-            <option value="2">高精細 (1/2)</option>
+            <option value="2" selected>高精細 (1/2)</option>
             <option value="4">軽量 (1/4)</option>
             <option value="8">省電力 (1/8)</option>
             <option value="16">超軽量 (1/16)</option>
           </select>
-          <output id="simulationResolutionValue">1/1</output>
+          <output id="simulationResolutionValue">1/2</output>
         </div>
         <div class="control-row control-row--select">
           <label for="aaMode">AA モード</label>
