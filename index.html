@@ -44,10 +44,38 @@
         font-size: 13px;
         line-height: 1.45;
         user-select: none;
+        min-width: 320px;
       }
 
       .hud code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+
+      .controls {
+        margin-top: 8px;
+        display: grid;
+        gap: 6px;
+      }
+
+      .control-row {
+        display: grid;
+        grid-template-columns: 1fr 120px 44px;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .control-row label {
+        color: #eef2ff;
+      }
+
+      .control-row input[type='range'] {
+        width: 100%;
+      }
+
+      .control-row output {
+        text-align: right;
+        color: #9fc2ff;
+        font-variant-numeric: tabular-nums;
       }
     </style>
   </head>
@@ -57,6 +85,28 @@
       <div><strong>Stable Fluids (Stam 2001)</strong></div>
       <div>ドラッグで流体に力と染料を注入</div>
       <div><code>R</code> でリセット</div>
+      <div class="controls">
+        <div class="control-row">
+          <label for="forceAmount">力の量</label>
+          <input id="forceAmount" type="range" min="20" max="2600" step="10" value="900" />
+          <output for="forceAmount" id="forceAmountValue">900</output>
+        </div>
+        <div class="control-row">
+          <label for="dyeAmount">染料の量</label>
+          <input id="dyeAmount" type="range" min="20" max="300" step="1" value="120" />
+          <output for="dyeAmount" id="dyeAmountValue">120</output>
+        </div>
+        <div class="control-row">
+          <label for="forceVelocityResponse">力の移動量応答</label>
+          <input id="forceVelocityResponse" type="range" min="-1" max="1" step="0.01" value="0" />
+          <output for="forceVelocityResponse" id="forceVelocityResponseValue">0.00</output>
+        </div>
+        <div class="control-row">
+          <label for="dyeVelocityResponse">染料の移動量応答</label>
+          <input id="dyeVelocityResponse" type="range" min="-1" max="1" step="0.01" value="0" />
+          <output for="dyeVelocityResponse" id="dyeVelocityResponseValue">0.00</output>
+        </div>
+      </div>
     </div>
     <script type="module" src="main.js"></script>
   </body>
