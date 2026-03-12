@@ -15,7 +15,8 @@ const SIM = {
   gridScale: 0.22,
 };
 
-let N = 0;
+let gridWidth = 0;
+let gridHeight = 0;
 let size = 0;
 let u;
 let v;
@@ -41,12 +42,13 @@ const pointer = {
 };
 
 function idx(x, y) {
-  return x + (N + 2) * y;
+  return x + (gridWidth + 2) * y;
 }
 
-function allocateGrid(n) {
-  N = n;
-  size = (N + 2) * (N + 2);
+function allocateGrid(width, height) {
+  gridWidth = width;
+  gridHeight = height;
+  size = (gridWidth + 2) * (gridHeight + 2);
 
   u = new Float32Array(size);
   v = new Float32Array(size);
@@ -55,10 +57,10 @@ function allocateGrid(n) {
   dens = new Float32Array(size);
   densPrev = new Float32Array(size);
 
-  imageData = new ImageData(N, N);
+  imageData = new ImageData(gridWidth, gridHeight);
   offscreen = document.createElement('canvas');
-  offscreen.width = N;
-  offscreen.height = N;
+  offscreen.width = gridWidth;
+  offscreen.height = gridHeight;
   offCtx = offscreen.getContext('2d');
 }
 
@@ -78,23 +80,27 @@ function addSource(x, s, dt) {
 }
 
 function setBoundary(b, x) {
-  for (let i = 1; i <= N; i += 1) {
-    x[idx(0, i)] = b === 1 ? -x[idx(1, i)] : x[idx(1, i)];
-    x[idx(N + 1, i)] = b === 1 ? -x[idx(N, i)] : x[idx(N, i)];
-    x[idx(i, 0)] = b === 2 ? -x[idx(i, 1)] : x[idx(i, 1)];
-    x[idx(i, N + 1)] = b === 2 ? -x[idx(i, N)] : x[idx(i, N)];
+  for (let y = 1; y <= gridHeight; y += 1) {
+    x[idx(0, y)] = b === 1 ? -x[idx(1, y)] : x[idx(1, y)];
+    x[idx(gridWidth + 1, y)] = b === 1 ? -x[idx(gridWidth, y)] : x[idx(gridWidth, y)];
+  }
+
+  for (let xPos = 1; xPos <= gridWidth; xPos += 1) {
+    x[idx(xPos, 0)] = b === 2 ? -x[idx(xPos, 1)] : x[idx(xPos, 1)];
+    x[idx(xPos, gridHeight + 1)] = b === 2 ? -x[idx(xPos, gridHeight)] : x[idx(xPos, gridHeight)];
   }
 
   x[idx(0, 0)] = 0.5 * (x[idx(1, 0)] + x[idx(0, 1)]);
-  x[idx(0, N + 1)] = 0.5 * (x[idx(1, N + 1)] + x[idx(0, N)]);
-  x[idx(N + 1, 0)] = 0.5 * (x[idx(N, 0)] + x[idx(N + 1, 1)]);
-  x[idx(N + 1, N + 1)] = 0.5 * (x[idx(N, N + 1)] + x[idx(N + 1, N)]);
+  x[idx(0, gridHeight + 1)] = 0.5 * (x[idx(1, gridHeight + 1)] + x[idx(0, gridHeight)]);
+  x[idx(gridWidth + 1, 0)] = 0.5 * (x[idx(gridWidth, 0)] + x[idx(gridWidth + 1, 1)]);
+  x[idx(gridWidth + 1, gridHeight + 1)] =
+    0.5 * (x[idx(gridWidth, gridHeight + 1)] + x[idx(gridWidth + 1, gridHeight)]);
 }
 
 function linSolve(b, x, x0, a, c) {
   for (let k = 0; k < SIM.iterations; k += 1) {
-    for (let j = 1; j <= N; j += 1) {
-      for (let i = 1; i <= N; i += 1) {
+    for (let j = 1; j <= gridHeight; j += 1) {
+      for (let i = 1; i <= gridWidth; i += 1) {
         x[idx(i, j)] = (
           x0[idx(i, j)] +
           a *
@@ -107,20 +113,22 @@ function linSolve(b, x, x0, a, c) {
 }
 
 function diffuse(b, x, x0, diff, dt) {
-  const a = dt * diff * N * N;
+  const gridScale = Math.max(gridWidth, gridHeight);
+  const a = dt * diff * gridScale * gridScale;
   linSolve(b, x, x0, a, 1 + 4 * a);
 }
 
 function advect(b, d, d0, velocX, velocY, dt) {
-  const dt0 = dt * N;
+  const dtX = dt * gridWidth;
+  const dtY = dt * gridHeight;
 
-  for (let j = 1; j <= N; j += 1) {
-    for (let i = 1; i <= N; i += 1) {
-      let x = i - dt0 * velocX[idx(i, j)];
-      let y = j - dt0 * velocY[idx(i, j)];
+  for (let j = 1; j <= gridHeight; j += 1) {
+    for (let i = 1; i <= gridWidth; i += 1) {
+      let x = i - dtX * velocX[idx(i, j)];
+      let y = j - dtY * velocY[idx(i, j)];
 
-      x = Math.max(0.5, Math.min(N + 0.5, x));
-      y = Math.max(0.5, Math.min(N + 0.5, y));
+      x = Math.max(0.5, Math.min(gridWidth + 0.5, x));
+      y = Math.max(0.5, Math.min(gridHeight + 0.5, y));
 
       const i0 = Math.floor(x);
       const i1 = i0 + 1;
@@ -141,12 +149,12 @@ function advect(b, d, d0, velocX, velocY, dt) {
 }
 
 function project(velocX, velocY, p, div) {
-  for (let j = 1; j <= N; j += 1) {
-    for (let i = 1; i <= N; i += 1) {
+  for (let j = 1; j <= gridHeight; j += 1) {
+    for (let i = 1; i <= gridWidth; i += 1) {
       div[idx(i, j)] =
         -0.5 *
         (velocX[idx(i + 1, j)] - velocX[idx(i - 1, j)] + velocY[idx(i, j + 1)] - velocY[idx(i, j - 1)]) /
-        N;
+        Math.max(gridWidth, gridHeight);
       p[idx(i, j)] = 0;
     }
   }
@@ -155,10 +163,10 @@ function project(velocX, velocY, p, div) {
   setBoundary(0, p);
   linSolve(0, p, div, 1, 4);
 
-  for (let j = 1; j <= N; j += 1) {
-    for (let i = 1; i <= N; i += 1) {
-      velocX[idx(i, j)] -= 0.5 * N * (p[idx(i + 1, j)] - p[idx(i - 1, j)]);
-      velocY[idx(i, j)] -= 0.5 * N * (p[idx(i, j + 1)] - p[idx(i, j - 1)]);
+  for (let j = 1; j <= gridHeight; j += 1) {
+    for (let i = 1; i <= gridWidth; i += 1) {
+      velocX[idx(i, j)] -= 0.5 * gridWidth * (p[idx(i + 1, j)] - p[idx(i - 1, j)]);
+      velocY[idx(i, j)] -= 0.5 * gridHeight * (p[idx(i, j + 1)] - p[idx(i, j - 1)]);
     }
   }
 
@@ -210,8 +218,8 @@ function toGrid(clientX, clientY) {
   const x = (clientX - rect.left) / rect.width;
   const y = (clientY - rect.top) / rect.height;
   return {
-    i: Math.max(1, Math.min(N, Math.floor(x * N) + 1)),
-    j: Math.max(1, Math.min(N, Math.floor(y * N) + 1)),
+    i: Math.max(1, Math.min(gridWidth, Math.floor(x * gridWidth) + 1)),
+    j: Math.max(1, Math.min(gridHeight, Math.floor(y * gridHeight) + 1)),
   };
 }
 
@@ -242,8 +250,8 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
         continue;
       }
 
-      const dyeI = Math.max(1, Math.min(N, end.i + ox));
-      const dyeJ = Math.max(1, Math.min(N, end.j + oy));
+      const dyeI = Math.max(1, Math.min(gridWidth, end.i + ox));
+      const dyeJ = Math.max(1, Math.min(gridHeight, end.j + oy));
       const dyeK = idx(dyeI, dyeJ);
 
       densPrev[dyeK] += (SIM.dyeScale + color * 0.25) * dyeFactor;
@@ -316,8 +324,8 @@ function renderDensity() {
   const pixels = imageData.data;
   let p = 0;
 
-  for (let j = 1; j <= N; j += 1) {
-    for (let i = 1; i <= N; i += 1) {
+  for (let j = 1; j <= gridHeight; j += 1) {
+    for (let i = 1; i <= gridWidth; i += 1) {
       const d = Math.min(255, dens[idx(i, j)]);
       const glow = Math.min(255, d * 1.35);
       pixels[p] = Math.min(255, glow * 0.4);
@@ -387,8 +395,14 @@ function resize() {
   canvas.width = w;
   canvas.height = h;
 
-  const nextN = Math.max(64, Math.floor(Math.min(w, h) * SIM.gridScale));
-  allocateGrid(nextN);
+  const longSide = Math.max(w, h);
+  const baseResolution = Math.max(64, Math.floor(longSide * SIM.gridScale));
+  const aspect = w / h;
+  const nextGridWidth = Math.max(64, Math.floor(aspect >= 1 ? baseResolution : baseResolution * aspect));
+  const nextGridHeight = Math.max(64, Math.floor(aspect >= 1 ? baseResolution / aspect : baseResolution));
+
+  allocateGrid(nextGridWidth, nextGridHeight);
+  reset();
 }
 
 function onPointerDown(e) {
