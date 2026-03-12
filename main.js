@@ -16,11 +16,7 @@ const SIM = {
   gridScale: 0.22,
   resolutionDivisor: 2,
   effectiveUpscaleRatio: 1,
-  aaMode: 'fxaa',
-  aaStrengthBase: 0.55,
-  aaMaxStrength: 1.85,
-  aaUpscaleThreshold: 2,
-  aaStrength: 0,
+  adaptiveAaProfile: null,
   impulseInterpolationMode: 'bezier',
   clickBurstForceScale: 25,
   clickBurstDyeScale: 12,
@@ -67,56 +63,33 @@ const pointer = {
 
 
 
-function applyFinalAaComposite(source, options = {}) {
-  const { allowAaAtLowUpscale = false } = options;
-  const lowUpscale = isLowUpscale(SIM.effectiveUpscaleRatio);
-  const aaDisabled = SIM.aaMode === 'off';
+function applyAdaptiveAaComposite(source) {
+  const profile = SIM.adaptiveAaProfile ?? getAdaptiveAaProfile();
+
   ctx.filter = 'none';
-
-  if (lowUpscale && !allowAaAtLowUpscale && aaDisabled) {
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-    return;
-  }
-
-  const aaStrength = SIM.aaStrength;
-  if (aaDisabled) {
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
-    return;
-  }
-
-  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingEnabled = profile.imageSmoothing;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
 
-  if (SIM.aaMode === 'linear') {
-    return;
-  }
-
-  if (SIM.aaMode === 'blur') {
+  if (profile.blurAlpha > 0 && profile.blurPx > 0) {
     ctx.save();
-    ctx.globalAlpha = clamp(0.08 + aaStrength * 0.12, 0.08, 0.35);
-    ctx.filter = `blur(${(0.35 + aaStrength * 0.45).toFixed(2)}px)`;
+    ctx.globalAlpha = profile.blurAlpha;
+    ctx.filter = `blur(${profile.blurPx.toFixed(2)}px)`;
     ctx.drawImage(canvas, 0, 0);
     ctx.restore();
-    return;
   }
 
-  // FXAA 相当: ごく軽いブラー + サブピクセルの再サンプルでジャギーを緩和。
-  ctx.save();
-  ctx.globalAlpha = clamp(0.08 + aaStrength * 0.09, 0.08, 0.3);
-  ctx.filter = `blur(${(0.25 + aaStrength * 0.35).toFixed(2)}px)`;
-  ctx.drawImage(canvas, 0, 0);
-  ctx.restore();
+  if (profile.jitterAlpha > 0 && profile.jitterPx > 0) {
+    const j = profile.jitterPx;
+    ctx.save();
+    ctx.globalAlpha = profile.jitterAlpha;
+    ctx.drawImage(canvas, -j, 0);
+    ctx.drawImage(canvas, j, 0);
+    ctx.drawImage(canvas, 0, -j);
+    ctx.drawImage(canvas, 0, j);
+    ctx.restore();
+  }
 
-  const jitter = clamp(0.2 + aaStrength * 0.22, 0.2, 0.8);
-  ctx.save();
-  ctx.globalAlpha = clamp(0.04 + aaStrength * 0.04, 0.04, 0.14);
-  ctx.drawImage(canvas, -jitter, 0);
-  ctx.drawImage(canvas, jitter, 0);
-  ctx.drawImage(canvas, 0, -jitter);
-  ctx.drawImage(canvas, 0, jitter);
-  ctx.restore();
   ctx.filter = 'none';
 }
 
@@ -591,7 +564,7 @@ function renderDensityCpu() {
     offCtx.putImageData(blurCompositeData, 0, 0);
   }
 
-  applyFinalAaComposite(offscreen);
+  applyAdaptiveAaComposite(offscreen);
 }
 
 
@@ -614,80 +587,50 @@ const controls = [
 
 const resolutionOptions = new Set([1, 2, 4, 8, 16]);
 const interpolationModes = new Set(['bezier', 'linear']);
-const aaModes = new Set(['off', 'linear', 'blur', 'fxaa']);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
 
-function isLowUpscale(upscaleRatio) {
-  return upscaleRatio <= SIM.aaUpscaleThreshold;
-}
+function getAdaptiveAaProfile() {
+  const upscale = Math.max(1, SIM.effectiveUpscaleRatio);
+  const coarseLevel = clamp(Math.log2(upscale), 0, 5);
+  const resolutionBias = clamp(Math.log2(SIM.resolutionDivisor), 0, 4) / 4;
+  const strength = clamp((coarseLevel + resolutionBias) / 4.2, 0, 1);
 
-function computeRecommendedAaStrength(upscaleRatio) {
-  if (isLowUpscale(upscaleRatio)) {
-    return 0;
+  let tier = '高精細';
+  if (upscale >= 5) {
+    tier = '超粗め';
+  } else if (upscale >= 3.2) {
+    tier = '粗め';
+  } else if (upscale >= 2.2) {
+    tier = '標準';
   }
 
-  const upscaleSteps = Math.log2(upscaleRatio / SIM.aaUpscaleThreshold);
-  const strength = SIM.aaStrengthBase + upscaleSteps * 0.55;
-  return clamp(strength, 0, SIM.aaMaxStrength);
-}
-
-function getAaModeLabel(mode) {
-  const aaModeLabels = {
-    off: 'オフ',
-    linear: '線形',
-    blur: 'ブラー',
-    fxaa: 'FXAA相当',
+  return {
+    tier,
+    strength,
+    imageSmoothing: true,
+    blurPx: 0.12 + strength * 0.95,
+    blurAlpha: 0.03 + strength * 0.22,
+    jitterPx: 0.10 + strength * 0.72,
+    jitterAlpha: 0.02 + strength * 0.09,
   };
-
-  return aaModeLabels[mode] ?? aaModeLabels.fxaa;
 }
 
-function getAaStrengthMessage() {
-  const recommended = SIM.aaStrength.toFixed(2);
+function updateAdaptiveAaDisplay() {
+  SIM.adaptiveAaProfile = getAdaptiveAaProfile();
 
-  if (SIM.aaMode === 'off') {
-    return `${recommended} (モード: オフ)`;
-  }
-
-  if (SIM.aaStrength === 0) {
-    return `${recommended} (推奨0だが ${getAaModeLabel(SIM.aaMode)} は適用中)`;
-  }
-
-  return `${recommended} (${getAaModeLabel(SIM.aaMode)} 適用中)`;
-}
-
-function updateAaModeDisplay() {
   const aaModeOutput = document.getElementById('aaModeValue');
-  if (!aaModeOutput) {
-    return;
+  if (aaModeOutput) {
+    aaModeOutput.textContent = `自動 (${SIM.adaptiveAaProfile.tier})`;
   }
 
-  const modeLabel = getAaModeLabel(SIM.aaMode);
-  if (SIM.aaMode === 'off') {
-    aaModeOutput.textContent = `${modeLabel} (AAなし)`;
-    return;
-  }
-
-  if (isLowUpscale(SIM.effectiveUpscaleRatio)) {
-    aaModeOutput.textContent = `${modeLabel} (低upscaleでも適用)`;
-    return;
-  }
-
-  aaModeOutput.textContent = `${modeLabel} (推奨)`;
-}
-
-function updateAaStrengthDisplay() {
-  SIM.aaStrength = computeRecommendedAaStrength(SIM.effectiveUpscaleRatio);
   const aaStrengthOutput = document.getElementById('aaStrengthValue');
   if (aaStrengthOutput) {
-    aaStrengthOutput.textContent = getAaStrengthMessage();
+    aaStrengthOutput.textContent = `${SIM.adaptiveAaProfile.strength.toFixed(2)} (解像度連動)`;
   }
-
-  updateAaModeDisplay();
 }
 
 function bindControls() {
@@ -731,21 +674,7 @@ function bindControls() {
     applyResolution(resolutionSelect.value);
   }
 
-
-  const aaModeSelect = document.getElementById('aaMode');
-  if (aaModeSelect) {
-    const applyAaMode = (rawValue) => {
-      const value = aaModes.has(rawValue) ? rawValue : 'fxaa';
-      aaModeSelect.value = value;
-      SIM.aaMode = value;
-      updateAaStrengthDisplay();
-    };
-
-    aaModeSelect.addEventListener('change', () => applyAaMode(aaModeSelect.value));
-    applyAaMode(aaModeSelect.value);
-  }
-
-  updateAaStrengthDisplay();
+  updateAdaptiveAaDisplay();
 
   const interpolationModeSelect = document.getElementById('impulseInterpolationMode');
   const interpolationModeOutput = document.getElementById('impulseInterpolationModeValue');
@@ -810,7 +739,7 @@ function resize() {
   SIM.effectiveUpscaleRatio = totalGridCells > 0
     ? Math.sqrt(totalPixels / totalGridCells)
     : 1;
-  updateAaStrengthDisplay();
+  updateAdaptiveAaDisplay();
 
 
   reset();

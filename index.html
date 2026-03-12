@@ -189,18 +189,12 @@
           <output id="simulationResolutionValue">1/2</output>
         </div>
         <div class="control-row control-row--select">
-          <label for="aaMode">AA モード</label>
-          <select id="aaMode">
-            <option value="off">off</option>
-            <option value="linear">linear</option>
-            <option value="blur">blur</option>
-            <option value="fxaa">fxaa相当</option>
-          </select>
-          <output id="aaModeValue">FXAA相当 (低upscaleでも適用)</output>
+          <label for="aaModeValue">AA モード</label>
+          <output id="aaModeValue">自動</output>
         </div>
         <div class="control-row control-row--select">
           <label for="aaStrengthValue">AA 強度(推奨)</label>
-          <output id="aaStrengthValue">0.00 (推奨0だが FXAA相当 は適用中)</output>
+          <output id="aaStrengthValue">0.00 (解像度連動)</output>
         </div>
         <div class="control-row control-row--select">
           <label for="impulseInterpolationMode">移動補完</label>
