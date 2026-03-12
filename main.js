@@ -15,6 +15,10 @@ const SIM = {
   fade: 0.992,
   gridScale: 0.22,
   resolutionDivisor: 1,
+  aaMode: 'fxaa',
+  aaStrengthBase: 0.55,
+  aaMaxStrength: 1.85,
+  aaStrength: 0,
   impulseInterpolationMode: 'bezier',
   clickBurstRadius: 6,
   clickBurstForceScale: 36,
@@ -469,8 +473,55 @@ function renderDensity() {
 
   offCtx.putImageData(imageData, 0, 0);
 
+  const isLowUpscale = SIM.resolutionDivisor <= 2;
+  ctx.filter = 'none';
+
+  if (isLowUpscale) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  // 1/4 以上の低解像度では後段AAを適用。
+  const aaStrength = SIM.aaStrength;
+  if (SIM.aaMode === 'off') {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+    return;
+  }
+
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+
+  if (SIM.aaMode === 'linear') {
+    return;
+  }
+
+  if (SIM.aaMode === 'blur') {
+    ctx.save();
+    ctx.globalAlpha = clamp(0.08 + aaStrength * 0.12, 0.08, 0.35);
+    ctx.filter = `blur(${(0.35 + aaStrength * 0.45).toFixed(2)}px)`;
+    ctx.drawImage(canvas, 0, 0);
+    ctx.restore();
+    return;
+  }
+
+  // FXAA 相当: ごく軽いブラー + サブピクセルの再サンプルでジャギーを緩和。
+  ctx.save();
+  ctx.globalAlpha = clamp(0.08 + aaStrength * 0.09, 0.08, 0.3);
+  ctx.filter = `blur(${(0.25 + aaStrength * 0.35).toFixed(2)}px)`;
+  ctx.drawImage(canvas, 0, 0);
+  ctx.restore();
+
+  const jitter = clamp(0.2 + aaStrength * 0.22, 0.2, 0.8);
+  ctx.save();
+  ctx.globalAlpha = clamp(0.04 + aaStrength * 0.04, 0.04, 0.14);
+  ctx.drawImage(canvas, -jitter, 0);
+  ctx.drawImage(canvas, jitter, 0);
+  ctx.drawImage(canvas, 0, -jitter);
+  ctx.drawImage(canvas, 0, jitter);
+  ctx.restore();
+  ctx.filter = 'none';
 }
 
 
@@ -487,9 +538,29 @@ const controls = [
 
 const resolutionOptions = new Set([1, 2, 4, 8, 16]);
 const interpolationModes = new Set(['bezier', 'linear']);
+const aaModes = new Set(['off', 'linear', 'blur', 'fxaa']);
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+
+function computeRecommendedAaStrength(resolutionDivisor) {
+  if (resolutionDivisor <= 2) {
+    return 0;
+  }
+
+  const upscaleSteps = Math.log2(resolutionDivisor / 2);
+  const strength = SIM.aaStrengthBase + upscaleSteps * 0.55;
+  return clamp(strength, 0, SIM.aaMaxStrength);
+}
+
+function updateAaStrengthDisplay() {
+  SIM.aaStrength = computeRecommendedAaStrength(SIM.resolutionDivisor);
+  const aaStrengthOutput = document.getElementById('aaStrengthValue');
+  if (aaStrengthOutput) {
+    aaStrengthOutput.textContent = SIM.aaStrength.toFixed(2);
+  }
 }
 
 function bindControls() {
@@ -526,12 +597,37 @@ function bindControls() {
       resolutionSelect.value = String(value);
       SIM.resolutionDivisor = value;
       resolutionOutput.textContent = `1/${value}`;
+      updateAaStrengthDisplay();
       resize();
     };
 
     resolutionSelect.addEventListener('change', () => applyResolution(resolutionSelect.value));
     applyResolution(resolutionSelect.value);
   }
+
+
+  const aaModeSelect = document.getElementById('aaMode');
+  const aaModeOutput = document.getElementById('aaModeValue');
+  if (aaModeSelect && aaModeOutput) {
+    const aaModeLabels = {
+      off: 'オフ',
+      linear: '線形',
+      blur: 'ブラー',
+      fxaa: 'FXAA相当',
+    };
+
+    const applyAaMode = (rawValue) => {
+      const value = aaModes.has(rawValue) ? rawValue : 'fxaa';
+      aaModeSelect.value = value;
+      SIM.aaMode = value;
+      aaModeOutput.textContent = aaModeLabels[value];
+    };
+
+    aaModeSelect.addEventListener('change', () => applyAaMode(aaModeSelect.value));
+    applyAaMode(aaModeSelect.value);
+  }
+
+  updateAaStrengthDisplay();
 
   const interpolationModeSelect = document.getElementById('impulseInterpolationMode');
   const interpolationModeOutput = document.getElementById('impulseInterpolationModeValue');
