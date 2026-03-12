@@ -75,16 +75,17 @@ function setWebgpuStatus(message) {
 function applyFinalAaComposite(source, options = {}) {
   const { allowAaAtLowUpscale = false } = options;
   const isLowUpscale = SIM.resolutionDivisor <= 2;
+  const aaDisabled = SIM.aaMode === 'off';
   ctx.filter = 'none';
 
-  if (isLowUpscale && !allowAaAtLowUpscale) {
+  if (isLowUpscale && !allowAaAtLowUpscale && aaDisabled) {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
     return;
   }
 
   const aaStrength = SIM.aaStrength;
-  if (SIM.aaMode === 'off') {
+  if (aaDisabled) {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
     return;
@@ -850,12 +851,59 @@ function computeRecommendedAaStrength(resolutionDivisor) {
   return clamp(strength, 0, SIM.aaMaxStrength);
 }
 
+function getAaModeLabel(mode) {
+  const aaModeLabels = {
+    off: 'オフ',
+    linear: '線形',
+    blur: 'ブラー',
+    fxaa: 'FXAA相当',
+  };
+
+  return aaModeLabels[mode] ?? aaModeLabels.fxaa;
+}
+
+function getAaStrengthMessage() {
+  const recommended = SIM.aaStrength.toFixed(2);
+
+  if (SIM.aaMode === 'off') {
+    return `${recommended} (モード: オフ)`;
+  }
+
+  if (SIM.aaStrength === 0) {
+    return `${recommended} (推奨0だが ${getAaModeLabel(SIM.aaMode)} は適用中)`;
+  }
+
+  return `${recommended} (${getAaModeLabel(SIM.aaMode)} 適用中)`;
+}
+
+function updateAaModeDisplay() {
+  const aaModeOutput = document.getElementById('aaModeValue');
+  if (!aaModeOutput) {
+    return;
+  }
+
+  const modeLabel = getAaModeLabel(SIM.aaMode);
+  if (SIM.aaMode === 'off') {
+    aaModeOutput.textContent = `${modeLabel} (AAなし)`;
+    return;
+  }
+
+  if (SIM.resolutionDivisor <= 2) {
+    aaModeOutput.textContent = `${modeLabel} (低upscaleでも適用)`;
+    return;
+  }
+
+  aaModeOutput.textContent = `${modeLabel} (推奨)`;
+}
+
 function updateAaStrengthDisplay() {
   SIM.aaStrength = computeRecommendedAaStrength(SIM.resolutionDivisor);
   const aaStrengthOutput = document.getElementById('aaStrengthValue');
   if (aaStrengthOutput) {
-    aaStrengthOutput.textContent = SIM.aaStrength.toFixed(2);
+    aaStrengthOutput.textContent = getAaStrengthMessage();
   }
+
+  updateAaModeDisplay();
 }
 
 function bindControls() {
@@ -902,20 +950,12 @@ function bindControls() {
 
 
   const aaModeSelect = document.getElementById('aaMode');
-  const aaModeOutput = document.getElementById('aaModeValue');
-  if (aaModeSelect && aaModeOutput) {
-    const aaModeLabels = {
-      off: 'オフ',
-      linear: '線形',
-      blur: 'ブラー',
-      fxaa: 'FXAA相当',
-    };
-
+  if (aaModeSelect) {
     const applyAaMode = (rawValue) => {
       const value = aaModes.has(rawValue) ? rawValue : 'fxaa';
       aaModeSelect.value = value;
       SIM.aaMode = value;
-      aaModeOutput.textContent = aaModeLabels[value];
+      updateAaStrengthDisplay();
     };
 
     aaModeSelect.addEventListener('change', () => applyAaMode(aaModeSelect.value));
