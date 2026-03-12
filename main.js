@@ -16,9 +16,11 @@ const SIM = {
   fade: 0.992,
   gridScale: 0.22,
   resolutionDivisor: 2,
+  effectiveUpscaleRatio: 1,
   aaMode: 'fxaa',
   aaStrengthBase: 0.55,
   aaMaxStrength: 1.85,
+  aaUpscaleThreshold: 2,
   aaStrength: 0,
   impulseInterpolationMode: 'bezier',
   clickBurstForceScale: 25,
@@ -74,11 +76,11 @@ function setWebgpuStatus(message) {
 
 function applyFinalAaComposite(source, options = {}) {
   const { allowAaAtLowUpscale = false } = options;
-  const isLowUpscale = SIM.resolutionDivisor <= 2;
+  const lowUpscale = isLowUpscale(SIM.effectiveUpscaleRatio);
   const aaDisabled = SIM.aaMode === 'off';
   ctx.filter = 'none';
 
-  if (isLowUpscale && !allowAaAtLowUpscale && aaDisabled) {
+  if (lowUpscale && !allowAaAtLowUpscale && aaDisabled) {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
     return;
@@ -841,12 +843,16 @@ function clamp(value, min, max) {
 }
 
 
-function computeRecommendedAaStrength(resolutionDivisor) {
-  if (resolutionDivisor <= 2) {
+function isLowUpscale(upscaleRatio) {
+  return upscaleRatio <= SIM.aaUpscaleThreshold;
+}
+
+function computeRecommendedAaStrength(upscaleRatio) {
+  if (isLowUpscale(upscaleRatio)) {
     return 0;
   }
 
-  const upscaleSteps = Math.log2(resolutionDivisor / 2);
+  const upscaleSteps = Math.log2(upscaleRatio / SIM.aaUpscaleThreshold);
   const strength = SIM.aaStrengthBase + upscaleSteps * 0.55;
   return clamp(strength, 0, SIM.aaMaxStrength);
 }
@@ -888,7 +894,7 @@ function updateAaModeDisplay() {
     return;
   }
 
-  if (SIM.resolutionDivisor <= 2) {
+  if (isLowUpscale(SIM.effectiveUpscaleRatio)) {
     aaModeOutput.textContent = `${modeLabel} (低upscaleでも適用)`;
     return;
   }
@@ -897,7 +903,7 @@ function updateAaModeDisplay() {
 }
 
 function updateAaStrengthDisplay() {
-  SIM.aaStrength = computeRecommendedAaStrength(SIM.resolutionDivisor);
+  SIM.aaStrength = computeRecommendedAaStrength(SIM.effectiveUpscaleRatio);
   const aaStrengthOutput = document.getElementById('aaStrengthValue');
   if (aaStrengthOutput) {
     aaStrengthOutput.textContent = getAaStrengthMessage();
@@ -940,7 +946,6 @@ function bindControls() {
       resolutionSelect.value = String(value);
       SIM.resolutionDivisor = value;
       resolutionOutput.textContent = `1/${value}`;
-      updateAaStrengthDisplay();
       resize();
     };
 
@@ -1022,6 +1027,12 @@ function resize() {
   const nextGridHeight = Math.max(16, Math.floor(aspect >= 1 ? baseResolution / aspect : baseResolution));
 
   allocateGrid(nextGridWidth, nextGridHeight);
+  const totalPixels = canvas.width * canvas.height;
+  const totalGridCells = gridWidth * gridHeight;
+  SIM.effectiveUpscaleRatio = totalGridCells > 0
+    ? Math.sqrt(totalPixels / totalGridCells)
+    : 1;
+  updateAaStrengthDisplay();
 
   if (gpuRenderer?.isGpu) {
     gpuRenderer.resizeCanvasTarget(w, h);
