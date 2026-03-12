@@ -15,6 +15,9 @@ const SIM = {
   gridScale: 0.22,
   resolutionDivisor: 1,
   impulseInterpolationMode: 'bezier',
+  clickBurstRadius: 6,
+  clickBurstForceScale: 36,
+  clickBurstDyeScale: 2.6,
 };
 
 let gridWidth = 0;
@@ -268,6 +271,37 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
   }
 
   pointer.hue = (pointer.hue + 2.4) % 360;
+}
+
+function emitRadialClickBurst(clientX, clientY) {
+  const center = toGrid(clientX, clientY);
+  const radius = Math.max(1, Math.round(SIM.clickBurstRadius));
+  const radiusSq = radius * radius;
+  const color = pointer.hue;
+
+  for (let oy = -radius; oy <= radius; oy += 1) {
+    for (let ox = -radius; ox <= radius; ox += 1) {
+      const distSq = ox * ox + oy * oy;
+      if (distSq > radiusSq) {
+        continue;
+      }
+
+      const i = Math.max(1, Math.min(gridWidth, center.i + ox));
+      const j = Math.max(1, Math.min(gridHeight, center.j + oy));
+      const k = idx(i, j);
+      const dist = Math.sqrt(distSq);
+      const nx = dist > 0 ? ox / dist : 0;
+      const ny = dist > 0 ? oy / dist : 0;
+      const falloff = 1 - dist / radius;
+      const force = SIM.forceScale * SIM.clickBurstForceScale * falloff;
+
+      uPrev[k] += nx * force;
+      vPrev[k] += ny * force;
+      densPrev[k] += (SIM.dyeScale + color * 0.25) * SIM.clickBurstDyeScale * falloff;
+    }
+  }
+
+  pointer.hue = (pointer.hue + 8) % 360;
 }
 
 function cubicBezierPoint(p0, p1, p2, p3, t) {
@@ -568,6 +602,7 @@ function onPointerDown(e) {
   pointer.prev2Dy = 0;
   pointer.prevDx = 0;
   pointer.prevDy = 0;
+  emitRadialClickBurst(e.clientX, e.clientY);
 }
 
 function onPointerMove(e) {
