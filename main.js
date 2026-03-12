@@ -20,7 +20,6 @@ const SIM = {
   aaMaxStrength: 1.85,
   aaStrength: 0,
   impulseInterpolationMode: 'bezier',
-  clickBurstRadius: 6,
   clickBurstForceScale: 36,
   clickBurstDyeScale: 2.6,
 };
@@ -297,7 +296,7 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
 
 function emitRadialClickBurst(clientX, clientY) {
   const center = toGrid(clientX, clientY);
-  const radius = Math.max(1, Math.round(SIM.clickBurstRadius));
+  const radius = Math.max(1, Math.round(SIM.dyeBrushRadius));
   const radiusSq = radius * radius;
   const color = pointer.hue;
 
