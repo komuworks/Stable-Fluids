@@ -37,6 +37,11 @@ let densPrev;
 let imageData;
 let offscreen;
 let offCtx;
+let blurPassA;
+let blurPassACtx;
+let blurPassB;
+let blurPassBCtx;
+let blurCompositeData;
 let lastFrameTime = 0;
 let fpsAccumulatedTime = 0;
 let fpsFrameCount = 0;
@@ -79,6 +84,18 @@ function allocateGrid(width, height) {
   offscreen.width = gridWidth;
   offscreen.height = gridHeight;
   offCtx = offscreen.getContext('2d');
+
+  blurPassA = document.createElement('canvas');
+  blurPassA.width = gridWidth;
+  blurPassA.height = gridHeight;
+  blurPassACtx = blurPassA.getContext('2d');
+
+  blurPassB = document.createElement('canvas');
+  blurPassB.width = gridWidth;
+  blurPassB.height = gridHeight;
+  blurPassBCtx = blurPassB.getContext('2d');
+
+  blurCompositeData = new ImageData(gridWidth, gridHeight);
 }
 
 function reset() {
@@ -472,6 +489,52 @@ function renderDensity() {
   }
 
   offCtx.putImageData(imageData, 0, 0);
+
+  const blurRadius = clamp(Math.log2(Math.max(1, SIM.resolutionDivisor)), 0, 2);
+  const blurPasses = blurRadius > 1.2 ? 2 : blurRadius > 0.15 ? 1 : 0;
+
+  if (blurPasses > 0) {
+    blurPassACtx.clearRect(0, 0, gridWidth, gridHeight);
+    blurPassACtx.filter = `blur(${blurRadius.toFixed(2)}px)`;
+    blurPassACtx.drawImage(offscreen, 0, 0);
+    blurPassACtx.filter = 'none';
+
+    let blurredCtx = blurPassACtx;
+
+    if (blurPasses === 2) {
+      blurPassBCtx.clearRect(0, 0, gridWidth, gridHeight);
+      blurPassBCtx.filter = `blur(${(blurRadius * 0.75).toFixed(2)}px)`;
+      blurPassBCtx.drawImage(blurPassA, 0, 0);
+      blurPassBCtx.filter = 'none';
+      blurredCtx = blurPassBCtx;
+    }
+
+    const srcPixels = imageData.data;
+    const blurredPixels = blurredCtx.getImageData(0, 0, gridWidth, gridHeight).data;
+    const outPixels = blurCompositeData.data;
+    const blurBlendMax = clamp(0.28 + blurRadius * 0.14, 0.15, 0.55);
+
+    let pIdx = 0;
+    for (let j = 1; j <= gridHeight; j += 1) {
+      for (let i = 1; i <= gridWidth; i += 1) {
+        const dx = Math.abs(dens[idx(i + 1, j)] - dens[idx(i - 1, j)]);
+        const dy = Math.abs(dens[idx(i, j + 1)] - dens[idx(i, j - 1)]);
+        const grad = dx + dy;
+        const edgeWeight = clamp(grad / 160, 0, 1);
+        const smoothWeight = (1 - edgeWeight) ** 2;
+        const blend = smoothWeight * blurBlendMax;
+        const invBlend = 1 - blend;
+
+        outPixels[pIdx] = srcPixels[pIdx] * invBlend + blurredPixels[pIdx] * blend;
+        outPixels[pIdx + 1] = srcPixels[pIdx + 1] * invBlend + blurredPixels[pIdx + 1] * blend;
+        outPixels[pIdx + 2] = srcPixels[pIdx + 2] * invBlend + blurredPixels[pIdx + 2] * blend;
+        outPixels[pIdx + 3] = 255;
+        pIdx += 4;
+      }
+    }
+
+    offCtx.putImageData(blurCompositeData, 0, 0);
+  }
 
   const isLowUpscale = SIM.resolutionDivisor <= 2;
   ctx.filter = 'none';
