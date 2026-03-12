@@ -10,6 +10,7 @@ const SIM = {
   forceScale: 900,
   forceVelocityResponse: 0,
   dyeVelocityResponse: 0,
+  impulseSpacing: 20,
   fade: 0.992,
   gridScale: 0.22,
 };
@@ -244,6 +245,23 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
   pointer.hue = (pointer.hue + 2.4) % 360;
 }
 
+function addInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag) {
+  const spacing = Math.max(1, SIM.impulseSpacing);
+  const distance = Math.hypot(toX - fromX, toY - fromY);
+  const steps = Math.max(1, Math.ceil(distance / spacing));
+  const stepElapsedMs = elapsedMs / steps;
+
+  for (let step = 1; step <= steps; step += 1) {
+    const t0 = (step - 1) / steps;
+    const t1 = step / steps;
+    const sx = fromX + (toX - fromX) * t0;
+    const sy = fromY + (toY - fromY) * t0;
+    const ex = fromX + (toX - fromX) * t1;
+    const ey = fromY + (toY - fromY) * t1;
+    addImpulse(sx, sy, ex, ey, stepElapsedMs, isDrag);
+  }
+}
+
 function renderDensity() {
   const pixels = imageData.data;
   let p = 0;
@@ -272,6 +290,7 @@ const controls = [
   { id: 'dyeAmount', key: 'dyeScale', format: (v) => Math.round(v).toString() },
   { id: 'forceVelocityResponse', key: 'forceVelocityResponse', format: (v) => Number(v).toFixed(2) },
   { id: 'dyeVelocityResponse', key: 'dyeVelocityResponse', format: (v) => Number(v).toFixed(2) },
+  { id: 'impulseSpacing', key: 'impulseSpacing', format: (v) => `${Number(v).toFixed(1)}px` },
 ];
 
 function clamp(value, min, max) {
@@ -343,7 +362,7 @@ function onPointerMove(e) {
   pointer.x = e.clientX;
   pointer.y = e.clientY;
   const elapsedMs = e.timeStamp - pointer.prevT;
-  addImpulse(pointer.px, pointer.py, pointer.x, pointer.y, elapsedMs, pointer.down);
+  addInterpolatedImpulses(pointer.px, pointer.py, pointer.x, pointer.y, elapsedMs, pointer.down);
   pointer.px = pointer.x;
   pointer.py = pointer.y;
   pointer.prevT = e.timeStamp;
