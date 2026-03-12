@@ -1,6 +1,5 @@
 const canvas = document.getElementById('fluid');
 let ctx;
-let gpuRenderer = null;
 
 const SIM = {
   dt: 0.1,
@@ -48,7 +47,6 @@ let blurCompositeData;
 let lastFrameTime = 0;
 let fpsAccumulatedTime = 0;
 let fpsFrameCount = 0;
-let webgpuStatusOutput;
 
 const fpsOutput = document.getElementById('fpsValue');
 
@@ -68,11 +66,6 @@ const pointer = {
 };
 
 
-function setWebgpuStatus(message) {
-  if (webgpuStatusOutput) {
-    webgpuStatusOutput.textContent = message;
-  }
-}
 
 function applyFinalAaComposite(source, options = {}) {
   const { allowAaAtLowUpscale = false } = options;
@@ -127,212 +120,6 @@ function applyFinalAaComposite(source, options = {}) {
   ctx.filter = 'none';
 }
 
-async function createWebGpuRenderer() {
-  if (!('gpu' in navigator)) {
-    setWebgpuStatus('WebGPU: 未対応 (Canvas2D)');
-    return null;
-  }
-
-  try {
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) {
-      setWebgpuStatus('WebGPU: アダプタ未検出 (Canvas2D)');
-      return null;
-    }
-
-    const device = await adapter.requestDevice();
-    const webgpuCanvas = document.createElement('canvas');
-    webgpuCanvas.width = canvas.width;
-    webgpuCanvas.height = canvas.height;
-
-    const context = webgpuCanvas.getContext('webgpu');
-    if (!context) {
-      setWebgpuStatus('WebGPU: 初期化失敗 (Canvas2D)');
-      return null;
-    }
-
-    const format = navigator.gpu.getPreferredCanvasFormat();
-    context.configure({
-      device,
-      format,
-      alphaMode: 'opaque',
-    });
-
-    let densityBuffer = device.createBuffer({
-      size: Math.max(4, gridWidth * gridHeight * 4),
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-    });
-
-    const uniformsBuffer = device.createBuffer({
-      size: 16,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    const shaderModule = device.createShaderModule({
-      code: `
-struct Uniforms {
-  width: u32,
-  height: u32,
-  _padding0: u32,
-  _padding1: u32,
-};
-
-@group(0) @binding(0) var<storage, read> density: array<f32>;
-@group(0) @binding(1) var<uniform> uniforms: Uniforms;
-
-struct VSOut {
-  @builtin(position) position: vec4<f32>,
-  @location(0) uv: vec2<f32>,
-};
-
-@vertex
-fn vsMain(@builtin(vertex_index) vertexIndex: u32) -> VSOut {
-  var positions = array<vec2<f32>, 3>(
-    vec2<f32>(-1.0, -3.0),
-    vec2<f32>(-1.0, 1.0),
-    vec2<f32>(3.0, 1.0),
-  );
-  var out: VSOut;
-  let p = positions[vertexIndex];
-  out.position = vec4<f32>(p, 0.0, 1.0);
-  out.uv = p * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
-  return out;
-}
-
-@fragment
-fn fsMain(in: VSOut) -> @location(0) vec4<f32> {
-  let w = max(1u, uniforms.width);
-  let h = max(1u, uniforms.height);
-  let i = min(w - 1u, u32(in.uv.x * f32(w)));
-  let j = min(h - 1u, u32(in.uv.y * f32(h)));
-  let k = i + w * j;
-  let d = min(255.0, max(0.0, density[k]));
-  let glow = min(255.0, d * 1.35);
-
-  return vec4<f32>(
-    min(1.0, glow * 0.4 / 255.0),
-    min(1.0, glow * 0.75 / 255.0),
-    min(1.0, glow * 1.15 / 255.0),
-    1.0,
-  );
-}
-`,
-    });
-
-    const pipeline = device.createRenderPipeline({
-      layout: 'auto',
-      vertex: {
-        module: shaderModule,
-        entryPoint: 'vsMain',
-      },
-      fragment: {
-        module: shaderModule,
-        entryPoint: 'fsMain',
-        targets: [{ format }],
-      },
-      primitive: {
-        topology: 'triangle-list',
-      },
-    });
-
-    let bindGroup = device.createBindGroup({
-      layout: pipeline.getBindGroupLayout(0),
-      entries: [
-        { binding: 0, resource: { buffer: densityBuffer } },
-        { binding: 1, resource: { buffer: uniformsBuffer } },
-      ],
-    });
-
-    const renderer = {
-      isGpu: true,
-      device,
-      context,
-      webgpuCanvas,
-      format,
-      pipeline,
-      bindGroup,
-      densityBuffer,
-      uniformsBuffer,
-      densityUpload: new Float32Array(Math.max(1, gridWidth * gridHeight)),
-      resize() {
-        const requiredSize = Math.max(4, gridWidth * gridHeight * 4);
-        if (this.densityBuffer.size < requiredSize) {
-          this.densityBuffer.destroy();
-          this.densityBuffer = this.device.createBuffer({
-            size: requiredSize,
-            usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-          });
-
-          this.bindGroup = this.device.createBindGroup({
-            layout: this.pipeline.getBindGroupLayout(0),
-            entries: [
-              { binding: 0, resource: { buffer: this.densityBuffer } },
-              { binding: 1, resource: { buffer: this.uniformsBuffer } },
-            ],
-          });
-        }
-
-        this.densityUpload = new Float32Array(Math.max(1, gridWidth * gridHeight));
-      },
-      render() {
-        let writeIndex = 0;
-        for (let j = 1; j <= gridHeight; j += 1) {
-          const srcOffset = idx(1, j);
-          for (let i = 0; i < gridWidth; i += 1) {
-            this.densityUpload[writeIndex] = dens[srcOffset + i];
-            writeIndex += 1;
-          }
-        }
-
-        this.device.queue.writeBuffer(this.densityBuffer, 0, this.densityUpload, 0, writeIndex);
-        this.device.queue.writeBuffer(
-          this.uniformsBuffer,
-          0,
-          new Uint32Array([gridWidth, gridHeight, 0, 0]),
-        );
-
-        const encoder = this.device.createCommandEncoder();
-        const pass = encoder.beginRenderPass({
-          colorAttachments: [
-            {
-              view: this.context.getCurrentTexture().createView(),
-              clearValue: { r: 0.02, g: 0.03, b: 0.05, a: 1 },
-              loadOp: 'clear',
-              storeOp: 'store',
-            },
-          ],
-        });
-
-        pass.setPipeline(this.pipeline);
-        pass.setBindGroup(0, this.bindGroup);
-        pass.draw(3, 1, 0, 0);
-        pass.end();
-
-        this.device.queue.submit([encoder.finish()]);
-      },
-      resizeCanvasTarget(width, height) {
-        this.webgpuCanvas.width = width;
-        this.webgpuCanvas.height = height;
-        this.context.configure({
-          device: this.device,
-          format: this.format,
-          alphaMode: 'opaque',
-        });
-      },
-    };
-
-    setWebgpuStatus('WebGPU: 有効');
-    return renderer;
-  } catch (error) {
-    console.error('WebGPU initialization failed.', error);
-    setWebgpuStatus('WebGPU: エラー (Canvas2D)');
-    return null;
-  }
-}
-
-function idx(x, y) {
-  return x + (gridWidth + 2) * y;
-}
 
 function allocateGrid(width, height) {
   gridWidth = width;
@@ -364,9 +151,6 @@ function allocateGrid(width, height) {
 
   blurCompositeData = new ImageData(gridWidth, gridHeight);
 
-  if (gpuRenderer?.isGpu) {
-    gpuRenderer.resize();
-  }
 }
 
 function reset() {
@@ -813,12 +597,6 @@ function renderDensityCpu() {
 
 
 function renderDensity() {
-  if (gpuRenderer?.isGpu) {
-    gpuRenderer.render();
-    applyFinalAaComposite(gpuRenderer.webgpuCanvas, { allowAaAtLowUpscale: true });
-    return;
-  }
-
   renderDensityCpu();
 }
 
@@ -1034,9 +812,6 @@ function resize() {
     : 1;
   updateAaStrengthDisplay();
 
-  if (gpuRenderer?.isGpu) {
-    gpuRenderer.resizeCanvasTarget(w, h);
-  }
 
   reset();
 }
@@ -1107,16 +882,13 @@ canvas.addEventListener('pointermove', onPointerMove);
 window.addEventListener('pointerup', onPointerUp);
 window.addEventListener('pointercancel', onPointerUp);
 
-async function start() {
-  webgpuStatusOutput = document.getElementById('webgpuValue');
-
+function start() {
   ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) {
     throw new Error('Canvas2D context is required.');
   }
 
   resize();
-  gpuRenderer = await createWebGpuRenderer();
 
   bindControls();
   loop();
