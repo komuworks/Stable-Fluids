@@ -447,7 +447,7 @@ const controls = [
   { id: 'impulseSpacing', key: 'impulseSpacing', format: (v) => `${Number(v).toFixed(1)}px` },
 ];
 
-const resolutionOptions = new Set([1, 4, 16]);
+const resolutionOptions = new Set([1, 2, 4, 8, 16]);
 const interpolationModes = new Set(['bezier', 'linear']);
 
 function clamp(value, min, max) {
