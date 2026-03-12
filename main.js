@@ -10,6 +10,7 @@ const SIM = {
   forceScale: 1,
   forceVelocityResponse: 1,
   dyeVelocityResponse: 0,
+  dyeBrushRadius: 2,
   impulseSpacing: 20,
   fade: 0.992,
   gridScale: 0.22,
@@ -254,7 +255,7 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
 
   const color = pointer.hue;
   const dyeFactor = (isDrag ? 1.5 : 1) * dyeVelocityFactor;
-  const dyeRadius = 2;
+  const dyeRadius = Math.max(1, Math.round(SIM.dyeBrushRadius));
   const dyeRadiusSq = dyeRadius * dyeRadius;
   for (let oy = -dyeRadius; oy <= dyeRadius; oy += 1) {
     for (let ox = -dyeRadius; ox <= dyeRadius; ox += 1) {
@@ -476,6 +477,7 @@ function renderDensity() {
 const controls = [
   { id: 'forceAmount', key: 'forceScale', format: (v) => Math.round(v).toString() },
   { id: 'dyeAmount', key: 'dyeScale', format: (v) => Math.round(v).toString() },
+  { id: 'dyeBrushSize', key: 'dyeBrushRadius', format: (v) => `${Math.round(Number(v))}px` },
   { id: 'forceVelocityResponse', key: 'forceVelocityResponse', format: (v) => Number(v).toFixed(2) },
   { id: 'dyeVelocityResponse', key: 'dyeVelocityResponse', format: (v) => Number(v).toFixed(2) },
   { id: 'impulseSpacing', key: 'impulseSpacing', format: (v) => `${Number(v).toFixed(1)}px` },
