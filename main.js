@@ -23,6 +23,7 @@ const SIM = {
   impulseInterpolationMode: 'bezier',
   clickBurstForceScale: 25,
   clickBurstDyeScale: 12,
+  clickBurstRadius: 1,
 };
 
 let gridWidth = 0;
@@ -497,7 +498,7 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
 
 function emitRadialClickBurst(clientX, clientY) {
   const center = toGrid(clientX, clientY);
-  const radius = Math.max(1, Math.round(SIM.dyeBrushRadius));
+  const radius = Math.max(1, Math.round(SIM.clickBurstRadius));
   const radiusSq = radius * radius;
   const color = pointer.hue;
 
@@ -807,6 +808,7 @@ const controls = [
   { id: 'impulseSpacing', key: 'impulseSpacing', format: (v) => `${Number(v).toFixed(1)}px` },
   { id: 'clickForceAmount', key: 'clickBurstForceScale', format: (v) => Number(v).toFixed(1) },
   { id: 'clickDyeAmount', key: 'clickBurstDyeScale', format: (v) => Number(v).toFixed(1) },
+  { id: 'clickRadius', key: 'clickBurstRadius', format: (v) => `${Math.round(Number(v))}px` },
 ];
 
 const resolutionOptions = new Set([1, 2, 4, 8, 16]);
