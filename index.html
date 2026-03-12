@@ -82,6 +82,24 @@
         font: inherit;
       }
 
+      .control-row select {
+        width: 100%;
+        background: rgb(7 11 22 / 75%);
+        border: 1px solid rgb(115 146 234 / 35%);
+        border-radius: 6px;
+        color: #d8e3ff;
+        padding: 2px 6px;
+        font: inherit;
+      }
+
+      .control-row--select {
+        grid-template-columns: 1fr 120px 124px;
+      }
+
+      .control-row--select output {
+        text-align: left;
+      }
+
       .control-row output {
         text-align: right;
         color: #9fc2ff;
@@ -132,6 +150,23 @@
           <input id="impulseSpacing" type="range" min="2" max="80" step="1" value="20" />
           <input id="impulseSpacingNumber" type="number" min="2" max="80" step="1" value="20" />
           <output for="impulseSpacing" id="impulseSpacingValue">20.0px</output>
+        </div>
+        <div class="control-row control-row--select">
+          <label for="simulationResolution">シミュレーション細かさ</label>
+          <select id="simulationResolution">
+            <option value="1">標準 (1/1)</option>
+            <option value="4">軽量 (1/4)</option>
+            <option value="16">超軽量 (1/16)</option>
+          </select>
+          <output id="simulationResolutionValue">1/1</output>
+        </div>
+        <div class="control-row control-row--select">
+          <label for="impulseInterpolationMode">移動補完</label>
+          <select id="impulseInterpolationMode">
+            <option value="bezier">ベジェ</option>
+            <option value="linear">直線</option>
+          </select>
+          <output id="impulseInterpolationModeValue">ベジェ</output>
         </div>
       </div>
     </div>

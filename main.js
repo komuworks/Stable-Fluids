@@ -13,6 +13,8 @@ const SIM = {
   impulseSpacing: 20,
   fade: 0.992,
   gridScale: 0.22,
+  resolutionDivisor: 1,
+  impulseInterpolationMode: 'bezier',
 };
 
 let gridWidth = 0;
@@ -290,7 +292,24 @@ function bezierArcLength(p0x, p0y, p1x, p1y, p2x, p2y, p3x, p3y, samples = 6) {
   return length;
 }
 
-function addInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy, currDx, currDy) {
+function addLinearInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag) {
+  const spacing = Math.max(1, SIM.impulseSpacing);
+  const lineLength = Math.hypot(toX - fromX, toY - fromY);
+  const steps = Math.max(1, Math.ceil(lineLength / spacing));
+  const stepElapsedMs = elapsedMs / steps;
+
+  for (let step = 1; step <= steps; step += 1) {
+    const t0 = (step - 1) / steps;
+    const t1 = step / steps;
+    const sx = fromX + (toX - fromX) * t0;
+    const sy = fromY + (toY - fromY) * t0;
+    const ex = fromX + (toX - fromX) * t1;
+    const ey = fromY + (toY - fromY) * t1;
+    addImpulse(sx, sy, ex, ey, stepElapsedMs, isDrag);
+  }
+}
+
+function addBezierInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy, currDx, currDy) {
   const spacing = Math.max(1, SIM.impulseSpacing);
 
   // Cubic Hermite tangents converted to Bezier handles for C1 continuity.
@@ -318,6 +337,15 @@ function addInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prev
     const ey = cubicBezierPoint(fromY, c1y, c2y, toY, t1);
     addImpulse(sx, sy, ex, ey, stepElapsedMs, isDrag);
   }
+}
+
+function addInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy, currDx, currDy) {
+  if (SIM.impulseInterpolationMode === 'linear') {
+    addLinearInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag);
+    return;
+  }
+
+  addBezierInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy, currDx, currDy);
 }
 
 function renderDensity() {
@@ -351,6 +379,9 @@ const controls = [
   { id: 'impulseSpacing', key: 'impulseSpacing', format: (v) => `${Number(v).toFixed(1)}px` },
 ];
 
+const resolutionOptions = new Set([1, 4, 16]);
+const interpolationModes = new Set(['bezier', 'linear']);
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -379,6 +410,41 @@ function bindControls() {
     numberInput.addEventListener('input', () => applyValue(numberInput.value));
     applyValue(slider.value);
   }
+
+  const resolutionSelect = document.getElementById('simulationResolution');
+  const resolutionOutput = document.getElementById('simulationResolutionValue');
+  if (resolutionSelect && resolutionOutput) {
+    const applyResolution = (rawValue) => {
+      const parsed = Number(rawValue);
+      const value = resolutionOptions.has(parsed) ? parsed : 1;
+      resolutionSelect.value = String(value);
+      SIM.resolutionDivisor = value;
+      resolutionOutput.textContent = `1/${value}`;
+      resize();
+    };
+
+    resolutionSelect.addEventListener('change', () => applyResolution(resolutionSelect.value));
+    applyResolution(resolutionSelect.value);
+  }
+
+  const interpolationModeSelect = document.getElementById('impulseInterpolationMode');
+  const interpolationModeOutput = document.getElementById('impulseInterpolationModeValue');
+  if (interpolationModeSelect && interpolationModeOutput) {
+    const modeLabels = {
+      bezier: 'ベジェ',
+      linear: '直線',
+    };
+
+    const applyInterpolationMode = (rawValue) => {
+      const value = interpolationModes.has(rawValue) ? rawValue : 'bezier';
+      interpolationModeSelect.value = value;
+      SIM.impulseInterpolationMode = value;
+      interpolationModeOutput.textContent = modeLabels[value];
+    };
+
+    interpolationModeSelect.addEventListener('change', () => applyInterpolationMode(interpolationModeSelect.value));
+    applyInterpolationMode(interpolationModeSelect.value);
+  }
 }
 
 function loop() {
@@ -396,10 +462,11 @@ function resize() {
   canvas.height = h;
 
   const longSide = Math.max(w, h);
-  const baseResolution = Math.max(64, Math.floor(longSide * SIM.gridScale));
+  const defaultResolution = Math.max(64, Math.floor(longSide * SIM.gridScale));
+  const baseResolution = Math.max(16, Math.floor(defaultResolution / SIM.resolutionDivisor));
   const aspect = w / h;
-  const nextGridWidth = Math.max(64, Math.floor(aspect >= 1 ? baseResolution : baseResolution * aspect));
-  const nextGridHeight = Math.max(64, Math.floor(aspect >= 1 ? baseResolution / aspect : baseResolution));
+  const nextGridWidth = Math.max(16, Math.floor(aspect >= 1 ? baseResolution : baseResolution * aspect));
+  const nextGridHeight = Math.max(16, Math.floor(aspect >= 1 ? baseResolution / aspect : baseResolution));
 
   allocateGrid(nextGridWidth, nextGridHeight);
   reset();
