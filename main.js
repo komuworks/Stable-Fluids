@@ -38,6 +38,8 @@ const pointer = {
   py: 0,
   hasPrev: false,
   prevT: 0,
+  prev2Dx: 0,
+  prev2Dy: 0,
   prevDx: 0,
   prevDy: 0,
   hue: 210,
@@ -309,15 +311,50 @@ function addLinearInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag
   }
 }
 
-function addBezierInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy, currDx, currDy) {
+function clampVectorLength(x, y, maxLength) {
+  const length = Math.hypot(x, y);
+  if (length <= maxLength || length === 0) {
+    return { x, y };
+  }
+
+  const scale = maxLength / length;
+  return {
+    x: x * scale,
+    y: y * scale,
+  };
+}
+
+function addBezierInterpolatedImpulses(
+  fromX,
+  fromY,
+  toX,
+  toY,
+  elapsedMs,
+  isDrag,
+  prev2Dx,
+  prev2Dy,
+  prevDx,
+  prevDy,
+  currDx,
+  currDy,
+) {
   const spacing = Math.max(1, SIM.impulseSpacing);
 
-  // Cubic Hermite tangents converted to Bezier handles for C1 continuity.
+  // Weighted history tangents converted to Bezier handles for C1 continuity.
   const tangentSmoothing = 0.7;
-  const m0x = prevDx * tangentSmoothing;
-  const m0y = prevDy * tangentSmoothing;
-  const m1x = currDx * tangentSmoothing;
-  const m1y = currDy * tangentSmoothing;
+  let m0x = (prev2Dx * 0.2 + prevDx * 0.5 + currDx * 0.3) * tangentSmoothing;
+  let m0y = (prev2Dy * 0.2 + prevDy * 0.5 + currDy * 0.3) * tangentSmoothing;
+  let m1x = (prev2Dx * 0.1 + prevDx * 0.3 + currDx * 0.6) * tangentSmoothing;
+  let m1y = (prev2Dy * 0.1 + prevDy * 0.3 + currDy * 0.6) * tangentSmoothing;
+
+  const segmentLength = Math.hypot(toX - fromX, toY - fromY);
+  const maxTangent = segmentLength * 1.5;
+  const clampedM0 = clampVectorLength(m0x, m0y, maxTangent);
+  const clampedM1 = clampVectorLength(m1x, m1y, maxTangent);
+  m0x = clampedM0.x;
+  m0y = clampedM0.y;
+  m1x = clampedM1.x;
+  m1y = clampedM1.y;
 
   const c1x = fromX + m0x / 3;
   const c1y = fromY + m0y / 3;
@@ -339,13 +376,39 @@ function addBezierInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag
   }
 }
 
-function addInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy, currDx, currDy) {
+function addInterpolatedImpulses(
+  fromX,
+  fromY,
+  toX,
+  toY,
+  elapsedMs,
+  isDrag,
+  prev2Dx,
+  prev2Dy,
+  prevDx,
+  prevDy,
+  currDx,
+  currDy,
+) {
   if (SIM.impulseInterpolationMode === 'linear') {
     addLinearInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag);
     return;
   }
 
-  addBezierInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy, currDx, currDy);
+  addBezierInterpolatedImpulses(
+    fromX,
+    fromY,
+    toX,
+    toY,
+    elapsedMs,
+    isDrag,
+    prev2Dx,
+    prev2Dy,
+    prevDx,
+    prevDy,
+    currDx,
+    currDy,
+  );
 }
 
 function renderDensity() {
@@ -480,6 +543,8 @@ function onPointerDown(e) {
   pointer.py = e.clientY;
   pointer.hasPrev = true;
   pointer.prevT = e.timeStamp;
+  pointer.prev2Dx = 0;
+  pointer.prev2Dy = 0;
   pointer.prevDx = 0;
   pointer.prevDy = 0;
 }
@@ -495,6 +560,8 @@ function onPointerMove(e) {
   pointer.x = e.clientX;
   pointer.y = e.clientY;
   const elapsedMs = e.timeStamp - pointer.prevT;
+  pointer.prev2Dx = pointer.prevDx;
+  pointer.prev2Dy = pointer.prevDy;
   const dx = pointer.x - pointer.px;
   const dy = pointer.y - pointer.py;
   addInterpolatedImpulses(
@@ -504,6 +571,8 @@ function onPointerMove(e) {
     pointer.y,
     elapsedMs,
     pointer.down,
+    pointer.prev2Dx,
+    pointer.prev2Dy,
     pointer.prevDx,
     pointer.prevDy,
     dx,
