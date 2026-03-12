@@ -6,8 +6,11 @@ const SIM = {
   diffusion: 0.00008,
   viscosity: 0.00003,
   iterations: 18,
-  forceScale: 2500,
+  hoverForceScale: 140,
+  dragForceScale: 240,
+  maxPointerSpeed: 7,
   dyeScale: 120,
+  dragDyeBoost: 1.5,
   fade: 0.992,
   gridScale: 0.22,
 };
@@ -30,6 +33,8 @@ const pointer = {
   y: 0,
   px: 0,
   py: 0,
+  hasPrev: false,
+  prevT: 0,
   hue: 210,
 };
 
@@ -208,16 +213,23 @@ function toGrid(clientX, clientY) {
   };
 }
 
-function addImpulse(fromX, fromY, toX, toY) {
+function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
   const start = toGrid(fromX, fromY);
   const end = toGrid(toX, toY);
   const di = end.i - start.i;
   const dj = end.j - start.j;
 
-  const forceX = di * SIM.forceScale;
-  const forceY = dj * SIM.forceScale;
+  const dt = Math.max(1 / 240, Math.min(1 / 20, elapsedMs / 1000));
+  const speedX = di / dt;
+  const speedY = dj / dt;
+  const speed = Math.hypot(speedX, speedY);
+  const speedScale = speed > SIM.maxPointerSpeed ? SIM.maxPointerSpeed / speed : 1;
+  const forceScale = isDrag ? SIM.dragForceScale : SIM.hoverForceScale;
+  const forceX = speedX * speedScale * forceScale;
+  const forceY = speedY * speedScale * forceScale;
 
   const color = pointer.hue;
+  const dyeFactor = isDrag ? SIM.dragDyeBoost : 1;
   for (let oy = -2; oy <= 2; oy += 1) {
     for (let ox = -2; ox <= 2; ox += 1) {
       const i = Math.max(1, Math.min(N, end.i + ox));
@@ -226,7 +238,7 @@ function addImpulse(fromX, fromY, toX, toY) {
 
       uPrev[k] += forceX;
       vPrev[k] += forceY;
-      densPrev[k] += SIM.dyeScale + color * 0.25;
+      densPrev[k] += (SIM.dyeScale + color * 0.25) * dyeFactor;
     }
   }
 
@@ -279,18 +291,25 @@ function onPointerDown(e) {
   pointer.y = e.clientY;
   pointer.px = e.clientX;
   pointer.py = e.clientY;
+  pointer.hasPrev = true;
+  pointer.prevT = e.timeStamp;
 }
 
 function onPointerMove(e) {
-  if (!pointer.down) {
-    return;
+  if (!pointer.hasPrev) {
+    pointer.px = e.clientX;
+    pointer.py = e.clientY;
+    pointer.prevT = e.timeStamp;
+    pointer.hasPrev = true;
   }
 
   pointer.x = e.clientX;
   pointer.y = e.clientY;
-  addImpulse(pointer.px, pointer.py, pointer.x, pointer.y);
+  const elapsedMs = e.timeStamp - pointer.prevT;
+  addImpulse(pointer.px, pointer.py, pointer.x, pointer.y, elapsedMs, pointer.down);
   pointer.px = pointer.x;
   pointer.py = pointer.y;
+  pointer.prevT = e.timeStamp;
 }
 
 function onPointerUp() {
