@@ -6,13 +6,6 @@ const SIM = {
   diffusion: 0.00008,
   viscosity: 0.00003,
   iterations: 18,
-  hoverForceScale: 140,
-  dragForceScale: 240,
-  maxPointerSpeed: 7,
-  movementForceGain: 0.22,
-  minForceMultiplier: 0.35,
-  maxForceMultiplier: 2.6,
-  forceCenterOffset: 2.5,
   dyeScale: 120,
   dragDyeBoost: 1.5,
   fade: 0.992,
@@ -223,23 +216,9 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
   const di = end.i - start.i;
   const dj = end.j - start.j;
 
-  const dt = Math.max(1 / 240, Math.min(1 / 20, elapsedMs / 1000));
-  const speedX = di / dt;
-  const speedY = dj / dt;
-  const speed = Math.hypot(speedX, speedY);
-  const speedScale = speed > SIM.maxPointerSpeed ? SIM.maxPointerSpeed / speed : 1;
-  const moveLen = Math.hypot(di, dj);
-  const movementMultiplier = Math.max(
-    SIM.minForceMultiplier,
-    Math.min(SIM.maxForceMultiplier, 1 + moveLen * SIM.movementForceGain),
-  );
-  const forceScale = isDrag ? SIM.dragForceScale : SIM.hoverForceScale;
-  const forceX = speedX * speedScale * forceScale * movementMultiplier;
-  const forceY = speedY * speedScale * forceScale * movementMultiplier;
-  const dirI = moveLen > 0 ? di / moveLen : 0;
-  const dirJ = moveLen > 0 ? dj / moveLen : 0;
-  const forceCenterI = end.i + dirI * SIM.forceCenterOffset;
-  const forceCenterJ = end.j + dirJ * SIM.forceCenterOffset;
+  void di;
+  void dj;
+  void elapsedMs;
 
   const color = pointer.hue;
   const dyeFactor = isDrag ? SIM.dragDyeBoost : 1;
@@ -249,12 +228,6 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
       const dyeJ = Math.max(1, Math.min(N, end.j + oy));
       const dyeK = idx(dyeI, dyeJ);
 
-      const forceI = Math.max(1, Math.min(N, Math.round(forceCenterI + ox)));
-      const forceJ = Math.max(1, Math.min(N, Math.round(forceCenterJ + oy)));
-      const forceK = idx(forceI, forceJ);
-
-      uPrev[forceK] += forceX;
-      vPrev[forceK] += forceY;
       densPrev[dyeK] += (SIM.dyeScale + color * 0.25) * dyeFactor;
     }
   }
