@@ -7,7 +7,9 @@ const SIM = {
   viscosity: 0.00003,
   iterations: 18,
   dyeScale: 120,
-  dragDyeBoost: 1.5,
+  forceScale: 900,
+  forceVelocityResponse: 0,
+  dyeVelocityResponse: 0,
   fade: 0.992,
   gridScale: 0.22,
 };
@@ -215,13 +217,20 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
   const end = toGrid(toX, toY);
   const di = end.i - start.i;
   const dj = end.j - start.j;
+  const distance = Math.hypot(toX - fromX, toY - fromY);
+  const safeElapsedMs = Math.max(1, elapsedMs);
+  const velocity = distance / safeElapsedMs;
 
-  void di;
-  void dj;
-  void elapsedMs;
+  const forceVelocityFactor = Math.max(0, 1 + SIM.forceVelocityResponse * (velocity - 1));
+  const dyeVelocityFactor = Math.max(0, 1 + SIM.dyeVelocityResponse * (velocity - 1));
+  const forceAmount = SIM.forceScale * forceVelocityFactor;
+
+  const forceK = idx(end.i, end.j);
+  uPrev[forceK] += di * forceAmount;
+  vPrev[forceK] += dj * forceAmount;
 
   const color = pointer.hue;
-  const dyeFactor = isDrag ? SIM.dragDyeBoost : 1;
+  const dyeFactor = (isDrag ? 1.5 : 1) * dyeVelocityFactor;
   for (let oy = -2; oy <= 2; oy += 1) {
     for (let ox = -2; ox <= 2; ox += 1) {
       const dyeI = Math.max(1, Math.min(N, end.i + ox));
@@ -255,6 +264,31 @@ function renderDensity() {
 
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+}
+
+
+const controls = [
+  { id: 'forceAmount', key: 'forceScale', format: (v) => Math.round(v).toString() },
+  { id: 'dyeAmount', key: 'dyeScale', format: (v) => Math.round(v).toString() },
+  { id: 'forceVelocityResponse', key: 'forceVelocityResponse', format: (v) => Number(v).toFixed(2) },
+  { id: 'dyeVelocityResponse', key: 'dyeVelocityResponse', format: (v) => Number(v).toFixed(2) },
+];
+
+function bindControls() {
+  for (const control of controls) {
+    const input = document.getElementById(control.id);
+    const output = document.getElementById(`${control.id}Value`);
+    if (!input || !output) continue;
+
+    const update = () => {
+      const value = Number(input.value);
+      SIM[control.key] = value;
+      output.textContent = control.format(value);
+    };
+
+    input.addEventListener('input', update);
+    update();
+  }
 }
 
 function loop() {
@@ -317,5 +351,6 @@ canvas.addEventListener('pointermove', onPointerMove);
 window.addEventListener('pointerup', onPointerUp);
 window.addEventListener('pointercancel', onPointerUp);
 
+bindControls();
 resize();
 loop();
