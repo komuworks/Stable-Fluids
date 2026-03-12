@@ -29,6 +29,11 @@ let densPrev;
 let imageData;
 let offscreen;
 let offCtx;
+let lastFrameTime = 0;
+let fpsAccumulatedTime = 0;
+let fpsFrameCount = 0;
+
+const fpsOutput = document.getElementById('fpsValue');
 
 const pointer = {
   down: false,
@@ -511,6 +516,22 @@ function bindControls() {
 }
 
 function loop() {
+  const now = performance.now();
+  if (lastFrameTime > 0) {
+    const frameTime = now - lastFrameTime;
+    fpsAccumulatedTime += frameTime;
+    fpsFrameCount += 1;
+
+    if (fpsOutput && fpsAccumulatedTime >= 250) {
+      const averageFrameTime = fpsAccumulatedTime / fpsFrameCount;
+      const fps = 1000 / averageFrameTime;
+      fpsOutput.textContent = fps.toFixed(1);
+      fpsAccumulatedTime = 0;
+      fpsFrameCount = 0;
+    }
+  }
+  lastFrameTime = now;
+
   velocityStep();
   densityStep();
   renderDensity();
