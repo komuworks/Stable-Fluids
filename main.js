@@ -274,20 +274,33 @@ const controls = [
   { id: 'dyeVelocityResponse', key: 'dyeVelocityResponse', format: (v) => Number(v).toFixed(2) },
 ];
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function bindControls() {
   for (const control of controls) {
-    const input = document.getElementById(control.id);
+    const slider = document.getElementById(control.id);
+    const numberInput = document.getElementById(`${control.id}Number`);
     const output = document.getElementById(`${control.id}Value`);
-    if (!input || !output) continue;
+    if (!slider || !numberInput || !output) continue;
 
-    const update = () => {
-      const value = Number(input.value);
+    const min = Number(slider.min);
+    const max = Number(slider.max);
+
+    const applyValue = (rawValue) => {
+      const parsed = Number(rawValue);
+      const baseValue = Number.isFinite(parsed) ? parsed : SIM[control.key];
+      const value = clamp(baseValue, min, max);
+      slider.value = String(value);
+      numberInput.value = String(value);
       SIM[control.key] = value;
       output.textContent = control.format(value);
     };
 
-    input.addEventListener('input', update);
-    update();
+    slider.addEventListener('input', () => applyValue(slider.value));
+    numberInput.addEventListener('input', () => applyValue(numberInput.value));
+    applyValue(slider.value);
   }
 }
 
