@@ -72,6 +72,58 @@ function setWebgpuStatus(message) {
   }
 }
 
+function applyFinalAaComposite(source, options = {}) {
+  const { allowAaAtLowUpscale = false } = options;
+  const isLowUpscale = SIM.resolutionDivisor <= 2;
+  ctx.filter = 'none';
+
+  if (isLowUpscale && !allowAaAtLowUpscale) {
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  const aaStrength = SIM.aaStrength;
+  if (SIM.aaMode === 'off') {
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+
+  if (SIM.aaMode === 'linear') {
+    return;
+  }
+
+  if (SIM.aaMode === 'blur') {
+    ctx.save();
+    ctx.globalAlpha = clamp(0.08 + aaStrength * 0.12, 0.08, 0.35);
+    ctx.filter = `blur(${(0.35 + aaStrength * 0.45).toFixed(2)}px)`;
+    ctx.drawImage(canvas, 0, 0);
+    ctx.restore();
+    return;
+  }
+
+  // FXAA 相当: ごく軽いブラー + サブピクセルの再サンプルでジャギーを緩和。
+  ctx.save();
+  ctx.globalAlpha = clamp(0.08 + aaStrength * 0.09, 0.08, 0.3);
+  ctx.filter = `blur(${(0.25 + aaStrength * 0.35).toFixed(2)}px)`;
+  ctx.drawImage(canvas, 0, 0);
+  ctx.restore();
+
+  const jitter = clamp(0.2 + aaStrength * 0.22, 0.2, 0.8);
+  ctx.save();
+  ctx.globalAlpha = clamp(0.04 + aaStrength * 0.04, 0.04, 0.14);
+  ctx.drawImage(canvas, -jitter, 0);
+  ctx.drawImage(canvas, jitter, 0);
+  ctx.drawImage(canvas, 0, -jitter);
+  ctx.drawImage(canvas, 0, jitter);
+  ctx.restore();
+  ctx.filter = 'none';
+}
+
 async function createWebGpuRenderer() {
   if (!('gpu' in navigator)) {
     setWebgpuStatus('WebGPU: 未対応 (Canvas2D)');
@@ -86,7 +138,11 @@ async function createWebGpuRenderer() {
     }
 
     const device = await adapter.requestDevice();
-    const context = canvas.getContext('webgpu');
+    const webgpuCanvas = document.createElement('canvas');
+    webgpuCanvas.width = canvas.width;
+    webgpuCanvas.height = canvas.height;
+
+    const context = webgpuCanvas.getContext('webgpu');
     if (!context) {
       setWebgpuStatus('WebGPU: 初期化失敗 (Canvas2D)');
       return null;
@@ -188,6 +244,8 @@ fn fsMain(in: VSOut) -> @location(0) vec4<f32> {
       isGpu: true,
       device,
       context,
+      webgpuCanvas,
+      format,
       pipeline,
       bindGroup,
       densityBuffer,
@@ -248,6 +306,15 @@ fn fsMain(in: VSOut) -> @location(0) vec4<f32> {
         pass.end();
 
         this.device.queue.submit([encoder.finish()]);
+      },
+      resizeCanvasTarget(width, height) {
+        this.webgpuCanvas.width = width;
+        this.webgpuCanvas.height = height;
+        this.context.configure({
+          device: this.device,
+          format: this.format,
+          alphaMode: 'opaque',
+        });
       },
     };
 
@@ -737,55 +804,7 @@ function renderDensityCpu() {
     offCtx.putImageData(blurCompositeData, 0, 0);
   }
 
-  const isLowUpscale = SIM.resolutionDivisor <= 2;
-  ctx.filter = 'none';
-
-  if (isLowUpscale) {
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
-    return;
-  }
-
-  // 1/4 以上の低解像度では後段AAを適用。
-  const aaStrength = SIM.aaStrength;
-  if (SIM.aaMode === 'off') {
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
-    return;
-  }
-
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
-
-  if (SIM.aaMode === 'linear') {
-    return;
-  }
-
-  if (SIM.aaMode === 'blur') {
-    ctx.save();
-    ctx.globalAlpha = clamp(0.08 + aaStrength * 0.12, 0.08, 0.35);
-    ctx.filter = `blur(${(0.35 + aaStrength * 0.45).toFixed(2)}px)`;
-    ctx.drawImage(canvas, 0, 0);
-    ctx.restore();
-    return;
-  }
-
-  // FXAA 相当: ごく軽いブラー + サブピクセルの再サンプルでジャギーを緩和。
-  ctx.save();
-  ctx.globalAlpha = clamp(0.08 + aaStrength * 0.09, 0.08, 0.3);
-  ctx.filter = `blur(${(0.25 + aaStrength * 0.35).toFixed(2)}px)`;
-  ctx.drawImage(canvas, 0, 0);
-  ctx.restore();
-
-  const jitter = clamp(0.2 + aaStrength * 0.22, 0.2, 0.8);
-  ctx.save();
-  ctx.globalAlpha = clamp(0.04 + aaStrength * 0.04, 0.04, 0.14);
-  ctx.drawImage(canvas, -jitter, 0);
-  ctx.drawImage(canvas, jitter, 0);
-  ctx.drawImage(canvas, 0, -jitter);
-  ctx.drawImage(canvas, 0, jitter);
-  ctx.restore();
-  ctx.filter = 'none';
+  applyFinalAaComposite(offscreen);
 }
 
 
@@ -793,6 +812,7 @@ function renderDensityCpu() {
 function renderDensity() {
   if (gpuRenderer?.isGpu) {
     gpuRenderer.render();
+    applyFinalAaComposite(gpuRenderer.webgpuCanvas, { allowAaAtLowUpscale: true });
     return;
   }
 
@@ -962,6 +982,11 @@ function resize() {
   const nextGridHeight = Math.max(16, Math.floor(aspect >= 1 ? baseResolution / aspect : baseResolution));
 
   allocateGrid(nextGridWidth, nextGridHeight);
+
+  if (gpuRenderer?.isGpu) {
+    gpuRenderer.resizeCanvasTarget(w, h);
+  }
+
   reset();
 }
 
@@ -1034,15 +1059,13 @@ window.addEventListener('pointercancel', onPointerUp);
 async function start() {
   webgpuStatusOutput = document.getElementById('webgpuValue');
 
+  ctx = canvas.getContext('2d', { alpha: false });
+  if (!ctx) {
+    throw new Error('Canvas2D context is required.');
+  }
+
   resize();
   gpuRenderer = await createWebGpuRenderer();
-
-  if (!gpuRenderer) {
-    ctx = canvas.getContext('2d', { alpha: false });
-    if (!ctx) {
-      throw new Error('Canvas2D context is required.');
-    }
-  }
 
   bindControls();
   loop();
