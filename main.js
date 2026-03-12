@@ -35,6 +35,8 @@ const pointer = {
   py: 0,
   hasPrev: false,
   prevT: 0,
+  prevDx: 0,
+  prevDy: 0,
   hue: 210,
 };
 
@@ -245,19 +247,37 @@ function addImpulse(fromX, fromY, toX, toY, elapsedMs, isDrag) {
   pointer.hue = (pointer.hue + 2.4) % 360;
 }
 
-function addInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag) {
+function cubicBezierPoint(p0, p1, p2, p3, t) {
+  const mt = 1 - t;
+  const mt2 = mt * mt;
+  const t2 = t * t;
+  return (
+    mt2 * mt * p0 +
+    3 * mt2 * t * p1 +
+    3 * mt * t2 * p2 +
+    t2 * t * p3
+  );
+}
+
+function addInterpolatedImpulses(fromX, fromY, toX, toY, elapsedMs, isDrag, prevDx, prevDy) {
   const spacing = Math.max(1, SIM.impulseSpacing);
   const distance = Math.hypot(toX - fromX, toY - fromY);
   const steps = Math.max(1, Math.ceil(distance / spacing));
   const stepElapsedMs = elapsedMs / steps;
 
+  const handleScale = 0.28;
+  const c1x = fromX + prevDx * handleScale;
+  const c1y = fromY + prevDy * handleScale;
+  const c2x = toX - (toX - fromX) * handleScale;
+  const c2y = toY - (toY - fromY) * handleScale;
+
   for (let step = 1; step <= steps; step += 1) {
     const t0 = (step - 1) / steps;
     const t1 = step / steps;
-    const sx = fromX + (toX - fromX) * t0;
-    const sy = fromY + (toY - fromY) * t0;
-    const ex = fromX + (toX - fromX) * t1;
-    const ey = fromY + (toY - fromY) * t1;
+    const sx = cubicBezierPoint(fromX, c1x, c2x, toX, t0);
+    const sy = cubicBezierPoint(fromY, c1y, c2y, toY, t0);
+    const ex = cubicBezierPoint(fromX, c1x, c2x, toX, t1);
+    const ey = cubicBezierPoint(fromY, c1y, c2y, toY, t1);
     addImpulse(sx, sy, ex, ey, stepElapsedMs, isDrag);
   }
 }
@@ -349,6 +369,8 @@ function onPointerDown(e) {
   pointer.py = e.clientY;
   pointer.hasPrev = true;
   pointer.prevT = e.timeStamp;
+  pointer.prevDx = 0;
+  pointer.prevDy = 0;
 }
 
 function onPointerMove(e) {
@@ -362,7 +384,20 @@ function onPointerMove(e) {
   pointer.x = e.clientX;
   pointer.y = e.clientY;
   const elapsedMs = e.timeStamp - pointer.prevT;
-  addInterpolatedImpulses(pointer.px, pointer.py, pointer.x, pointer.y, elapsedMs, pointer.down);
+  const dx = pointer.x - pointer.px;
+  const dy = pointer.y - pointer.py;
+  addInterpolatedImpulses(
+    pointer.px,
+    pointer.py,
+    pointer.x,
+    pointer.y,
+    elapsedMs,
+    pointer.down,
+    pointer.prevDx,
+    pointer.prevDy,
+  );
+  pointer.prevDx = dx;
+  pointer.prevDy = dy;
   pointer.px = pointer.x;
   pointer.py = pointer.y;
   pointer.prevT = e.timeStamp;
