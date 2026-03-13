@@ -25,6 +25,10 @@ const SIM = {
   clickBurstForceScale: 2.5,
   clickBurstDyeScale: 50,
   clickBurstRadius: 5,
+  showDensity: true,
+  showVelocity: false,
+  showPressure: false,
+  showVorticity: false,
 };
 
 let gridWidth = 0;
@@ -36,7 +40,10 @@ let uPrev;
 let vPrev;
 let dens;
 let densPrev;
+let pressure;
+let vorticity;
 let imageData;
+let overlayImageData;
 let offscreen;
 let offCtx;
 let blurPassA;
@@ -82,8 +89,11 @@ function allocateGrid(width, height) {
   vPrev = new Float32Array(size);
   dens = new Float32Array(size);
   densPrev = new Float32Array(size);
+  pressure = new Float32Array(size);
+  vorticity = new Float32Array(size);
 
   imageData = new ImageData(gridWidth, gridHeight);
+  overlayImageData = new ImageData(gridWidth, gridHeight);
   offscreen = document.createElement('canvas');
   offscreen.width = gridWidth;
   offscreen.height = gridHeight;
@@ -109,6 +119,8 @@ function reset() {
   vPrev.fill(0);
   dens.fill(0);
   densPrev.fill(0);
+  pressure.fill(0);
+  vorticity.fill(0);
 }
 
 function addSource(x, s, dt) {
@@ -186,7 +198,7 @@ function advect(b, d, d0, velocX, velocY, dt) {
   setBoundary(b, d);
 }
 
-function project(velocX, velocY, p, div) {
+function project(velocX, velocY, p, div, capturePressure = false) {
   for (let j = 1; j <= gridHeight; j += 1) {
     for (let i = 1; i <= gridWidth; i += 1) {
       div[idx(i, j)] =
@@ -200,6 +212,10 @@ function project(velocX, velocY, p, div) {
   setBoundary(0, div);
   setBoundary(0, p);
   linSolve(0, p, div, 1, 4);
+
+  if (capturePressure) {
+    pressure.set(p);
+  }
 
   for (let j = 1; j <= gridHeight; j += 1) {
     for (let i = 1; i <= gridWidth; i += 1) {
@@ -229,7 +245,15 @@ function velocityStep() {
   advect(1, u, uPrev, uPrev, vPrev, SIM.dt);
   advect(2, v, vPrev, uPrev, vPrev, SIM.dt);
 
-  project(u, v, uPrev, vPrev);
+  project(u, v, uPrev, vPrev, true);
+
+  for (let j = 1; j <= gridHeight; j += 1) {
+    for (let i = 1; i <= gridWidth; i += 1) {
+      vorticity[idx(i, j)] =
+        0.5 * (v[idx(i + 1, j)] - v[idx(i - 1, j)] - (u[idx(i, j + 1)] - u[idx(i, j - 1)]));
+    }
+  }
+  setBoundary(0, vorticity);
 
   uPrev.fill(0);
   vPrev.fill(0);
@@ -482,11 +506,17 @@ function renderDensity() {
 
   for (let j = 1; j <= gridHeight; j += 1) {
     for (let i = 1; i <= gridWidth; i += 1) {
-      const d = Math.min(255, dens[idx(i, j)]);
-      const glow = Math.min(255, d * 1.35);
-      pixels[p] = Math.min(255, glow * 0.4);
-      pixels[p + 1] = Math.min(255, glow * 0.75);
-      pixels[p + 2] = Math.min(255, glow * 1.15);
+      if (SIM.showDensity) {
+        const d = Math.min(255, dens[idx(i, j)]);
+        const glow = Math.min(255, d * 1.35);
+        pixels[p] = Math.min(255, glow * 0.4);
+        pixels[p + 1] = Math.min(255, glow * 0.75);
+        pixels[p + 2] = Math.min(255, glow * 1.15);
+      } else {
+        pixels[p] = 0;
+        pixels[p + 1] = 0;
+        pixels[p + 2] = 0;
+      }
       pixels[p + 3] = 255;
       p += 4;
     }
@@ -546,49 +576,141 @@ function renderDensity() {
   if (isLowUpscale) {
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+  } else {
+    // 1/4 以上の低解像度では後段AAを適用。
+    const aaStrength = SIM.aaStrength;
+    if (SIM.aaMode === 'off') {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+
+      if (SIM.aaMode === 'blur') {
+        ctx.save();
+        ctx.globalAlpha = clamp(0.08 + aaStrength * 0.12, 0.08, 0.35);
+        ctx.filter = `blur(${(0.35 + aaStrength * 0.45).toFixed(2)}px)`;
+        ctx.drawImage(canvas, 0, 0);
+        ctx.restore();
+      } else if (SIM.aaMode === 'fxaa') {
+        // FXAA 相当: ごく軽いブラー + サブピクセルの再サンプルでジャギーを緩和。
+        ctx.save();
+        ctx.globalAlpha = clamp(0.08 + aaStrength * 0.09, 0.08, 0.3);
+        ctx.filter = `blur(${(0.25 + aaStrength * 0.35).toFixed(2)}px)`;
+        ctx.drawImage(canvas, 0, 0);
+        ctx.restore();
+
+        const jitter = clamp(0.2 + aaStrength * 0.22, 0.2, 0.8);
+        ctx.save();
+        ctx.globalAlpha = clamp(0.04 + aaStrength * 0.04, 0.04, 0.14);
+        ctx.drawImage(canvas, -jitter, 0);
+        ctx.drawImage(canvas, jitter, 0);
+        ctx.drawImage(canvas, 0, -jitter);
+        ctx.drawImage(canvas, 0, jitter);
+        ctx.restore();
+      }
+    }
+  }
+
+  ctx.filter = 'none';
+
+  renderFieldOverlay(pressure, [255, 96, 96], [96, 132, 255], 0.58, SIM.showPressure);
+  renderFieldOverlay(vorticity, [255, 178, 76], [128, 96, 255], 0.65, SIM.showVorticity);
+  renderVelocityVectors();
+}
+
+function renderFieldOverlay(field, positiveColor, negativeColor, alpha, enabled) {
+  if (!enabled) {
     return;
   }
 
-  // 1/4 以上の低解像度では後段AAを適用。
-  const aaStrength = SIM.aaStrength;
-  if (SIM.aaMode === 'off') {
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+  let maxAbs = 0;
+  for (let j = 1; j <= gridHeight; j += 1) {
+    for (let i = 1; i <= gridWidth; i += 1) {
+      maxAbs = Math.max(maxAbs, Math.abs(field[idx(i, j)]));
+    }
+  }
+
+  if (maxAbs < 1e-5) {
     return;
   }
 
+  const pixels = overlayImageData.data;
+  let p = 0;
+  for (let j = 1; j <= gridHeight; j += 1) {
+    for (let i = 1; i <= gridWidth; i += 1) {
+      const normalized = clamp(field[idx(i, j)] / maxAbs, -1, 1);
+      const magnitude = Math.abs(normalized);
+      const color = normalized >= 0 ? positiveColor : negativeColor;
+      pixels[p] = color[0] * magnitude;
+      pixels[p + 1] = color[1] * magnitude;
+      pixels[p + 2] = color[2] * magnitude;
+      pixels[p + 3] = 255;
+      p += 4;
+    }
+  }
+
+  offCtx.putImageData(overlayImageData, 0, 0);
+  ctx.save();
+  ctx.globalAlpha = alpha;
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+  ctx.restore();
+}
 
-  if (SIM.aaMode === 'linear') {
+function renderVelocityVectors() {
+  if (!SIM.showVelocity) {
     return;
   }
 
-  if (SIM.aaMode === 'blur') {
-    ctx.save();
-    ctx.globalAlpha = clamp(0.08 + aaStrength * 0.12, 0.08, 0.35);
-    ctx.filter = `blur(${(0.35 + aaStrength * 0.45).toFixed(2)}px)`;
-    ctx.drawImage(canvas, 0, 0);
-    ctx.restore();
+  const scaleX = canvas.width / gridWidth;
+  const scaleY = canvas.height / gridHeight;
+  const sampleStep = Math.max(3, Math.floor(Math.min(gridWidth, gridHeight) / 26));
+
+  let maxMagnitude = 0;
+  for (let j = 1; j <= gridHeight; j += sampleStep) {
+    for (let i = 1; i <= gridWidth; i += sampleStep) {
+      const ux = u[idx(i, j)];
+      const vy = v[idx(i, j)];
+      const mag = Math.hypot(ux, vy);
+      if (mag > maxMagnitude) {
+        maxMagnitude = mag;
+      }
+    }
+  }
+
+  if (maxMagnitude < 1e-6) {
     return;
   }
 
-  // FXAA 相当: ごく軽いブラー + サブピクセルの再サンプルでジャギーを緩和。
+  const maxArrowLength = Math.max(6, Math.min(scaleX, scaleY) * sampleStep * 0.9);
   ctx.save();
-  ctx.globalAlpha = clamp(0.08 + aaStrength * 0.09, 0.08, 0.3);
-  ctx.filter = `blur(${(0.25 + aaStrength * 0.35).toFixed(2)}px)`;
-  ctx.drawImage(canvas, 0, 0);
-  ctx.restore();
+  ctx.strokeStyle = 'rgba(220, 244, 255, 0.82)';
+  ctx.lineWidth = Math.max(1, Math.min(scaleX, scaleY) * 0.11);
+  ctx.beginPath();
 
-  const jitter = clamp(0.2 + aaStrength * 0.22, 0.2, 0.8);
-  ctx.save();
-  ctx.globalAlpha = clamp(0.04 + aaStrength * 0.04, 0.04, 0.14);
-  ctx.drawImage(canvas, -jitter, 0);
-  ctx.drawImage(canvas, jitter, 0);
-  ctx.drawImage(canvas, 0, -jitter);
-  ctx.drawImage(canvas, 0, jitter);
+  for (let j = 1; j <= gridHeight; j += sampleStep) {
+    for (let i = 1; i <= gridWidth; i += sampleStep) {
+      const ux = u[idx(i, j)];
+      const vy = v[idx(i, j)];
+      const mag = Math.hypot(ux, vy);
+      if (mag < 1e-4) {
+        continue;
+      }
+
+      const startX = (i - 0.5) * scaleX;
+      const startY = (j - 0.5) * scaleY;
+      const len = (mag / maxMagnitude) * maxArrowLength;
+      const endX = startX + (ux / mag) * len;
+      const endY = startY + (vy / mag) * len;
+
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+    }
+  }
+
+  ctx.stroke();
   ctx.restore();
-  ctx.filter = 'none';
 }
 
 
@@ -607,6 +729,12 @@ const controls = [
 const resolutionOptions = new Set([1, 2, 4, 8, 16]);
 const interpolationModes = new Set(['bezier', 'linear']);
 const aaModes = new Set(['off', 'linear', 'blur', 'fxaa']);
+const overlayToggleMap = {
+  showDensity: 'toggleDensity',
+  showVelocity: 'toggleVelocity',
+  showPressure: 'togglePressure',
+  showVorticity: 'toggleVorticity',
+};
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -759,6 +887,17 @@ function bindControls() {
     aaStrengthResetButton.addEventListener('click', () => {
       SIM.aaStrength = computeRecommendedAaStrength(SIM.resolutionDivisor);
       updateAaStrengthDisplay();
+    });
+  }
+
+  for (const [key, controlId] of Object.entries(overlayToggleMap)) {
+    const input = document.getElementById(controlId);
+    if (!input) {
+      continue;
+    }
+    input.checked = Boolean(SIM[key]);
+    input.addEventListener('change', () => {
+      SIM[key] = input.checked;
     });
   }
 
