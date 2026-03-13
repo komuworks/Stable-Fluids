@@ -96,6 +96,16 @@
         grid-template-columns: 1fr 120px 124px;
       }
 
+      .control-row--toggle {
+        grid-template-columns: 1fr auto 124px;
+      }
+
+      .control-row--toggle input[type='checkbox'] {
+        width: 18px;
+        height: 18px;
+        accent-color: #7ba7ff;
+      }
+
       .control-row button {
         background: rgb(31 47 86 / 70%);
         border: 1px solid rgb(115 146 234 / 35%);
@@ -230,6 +240,26 @@
             <option value="linear" selected>直線</option>
           </select>
           <output id="impulseInterpolationModeValue">直線</output>
+        </div>
+        <div class="control-row control-row--toggle">
+          <label for="toggleDensity">表示: 染料（密度）</label>
+          <input id="toggleDensity" type="checkbox" checked />
+          <output>ON/OFF</output>
+        </div>
+        <div class="control-row control-row--toggle">
+          <label for="toggleVelocity">表示: 速度場ベクトル</label>
+          <input id="toggleVelocity" type="checkbox" />
+          <output>ON/OFF</output>
+        </div>
+        <div class="control-row control-row--toggle">
+          <label for="togglePressure">表示: 圧力</label>
+          <input id="togglePressure" type="checkbox" />
+          <output>ON/OFF</output>
+        </div>
+        <div class="control-row control-row--toggle">
+          <label for="toggleVorticity">表示: 渦度</label>
+          <input id="toggleVorticity" type="checkbox" />
+          <output>ON/OFF</output>
         </div>
       </div>
     </div>
