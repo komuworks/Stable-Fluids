@@ -6,6 +6,8 @@ const SIM = {
   diffusion: 0.00008,
   viscosity: 0.00003,
   iterations: 18,
+  minIterations: 8,
+  maxIterations: 24,
   dyeScale: 20,
   forceScale: 5,
   forceVelocityResponse: 1,
@@ -14,15 +16,15 @@ const SIM = {
   impulseSpacing: 2,
   fade: 0.992,
   gridScale: 0.22,
-  resolutionDivisor: 2,
-  aaMode: 'fxaa',
+  resolutionDivisor: 4,
+  aaMode: 'blur',
   aaStrengthBase: 0.55,
   aaMaxStrength: 1.85,
   aaStrength: 0,
-  impulseInterpolationMode: 'bezier',
-  clickBurstForceScale: 25,
-  clickBurstDyeScale: 12,
-  clickBurstRadius: 1,
+  impulseInterpolationMode: 'linear',
+  clickBurstForceScale: 2.5,
+  clickBurstDyeScale: 50,
+  clickBurstRadius: 5,
 };
 
 let gridWidth = 0;
@@ -45,8 +47,10 @@ let blurCompositeData;
 let lastFrameTime = 0;
 let fpsAccumulatedTime = 0;
 let fpsFrameCount = 0;
+let solverTuneCooldownUntil = 0;
 
 const fpsOutput = document.getElementById('fpsValue');
+const iterationsOutput = document.getElementById('iterationsValue');
 
 const pointer = {
   down: false,
@@ -620,10 +624,48 @@ function computeRecommendedAaStrength(resolutionDivisor) {
 }
 
 function updateAaStrengthDisplay() {
-  SIM.aaStrength = computeRecommendedAaStrength(SIM.resolutionDivisor);
+  const aaStrengthSlider = document.getElementById('aaStrength');
+  const aaStrengthNumber = document.getElementById('aaStrengthNumber');
   const aaStrengthOutput = document.getElementById('aaStrengthValue');
+  const aaStrengthDefaultOutput = document.getElementById('aaStrengthDefaultValue');
+  const recommended = computeRecommendedAaStrength(SIM.resolutionDivisor);
+
+  if (aaStrengthSlider) {
+    aaStrengthSlider.value = SIM.aaStrength.toFixed(2);
+  }
+  if (aaStrengthNumber) {
+    aaStrengthNumber.value = SIM.aaStrength.toFixed(2);
+  }
   if (aaStrengthOutput) {
     aaStrengthOutput.textContent = SIM.aaStrength.toFixed(2);
+  }
+  if (aaStrengthDefaultOutput) {
+    aaStrengthDefaultOutput.textContent = `推奨 ${recommended.toFixed(2)}`;
+  }
+}
+
+function updateIterationsDisplay() {
+  if (iterationsOutput) {
+    iterationsOutput.textContent = String(Math.round(SIM.iterations));
+  }
+}
+
+function autoTuneIterations(fps, now) {
+  if (now < solverTuneCooldownUntil) {
+    return;
+  }
+
+  if (fps < 52 && SIM.iterations > SIM.minIterations) {
+    SIM.iterations -= 1;
+    solverTuneCooldownUntil = now + 700;
+    updateIterationsDisplay();
+    return;
+  }
+
+  if (fps > 62 && SIM.iterations < SIM.maxIterations) {
+    SIM.iterations += 1;
+    solverTuneCooldownUntil = now + 1000;
+    updateIterationsDisplay();
   }
 }
 
@@ -661,6 +703,11 @@ function bindControls() {
       resolutionSelect.value = String(value);
       SIM.resolutionDivisor = value;
       resolutionOutput.textContent = `1/${value}`;
+      const recommended = computeRecommendedAaStrength(SIM.resolutionDivisor);
+      SIM.aaStrength = clamp(SIM.aaStrength, 0, SIM.aaMaxStrength);
+      if (Math.abs(SIM.aaStrength - recommended) < 0.001) {
+        SIM.aaStrength = recommended;
+      }
       updateAaStrengthDisplay();
       resize();
     };
@@ -681,7 +728,7 @@ function bindControls() {
     };
 
     const applyAaMode = (rawValue) => {
-      const value = aaModes.has(rawValue) ? rawValue : 'fxaa';
+      const value = aaModes.has(rawValue) ? rawValue : 'blur';
       aaModeSelect.value = value;
       SIM.aaMode = value;
       aaModeOutput.textContent = aaModeLabels[value];
@@ -691,7 +738,33 @@ function bindControls() {
     applyAaMode(aaModeSelect.value);
   }
 
+  const aaStrengthSlider = document.getElementById('aaStrength');
+  const aaStrengthNumber = document.getElementById('aaStrengthNumber');
+  const aaStrengthResetButton = document.getElementById('aaStrengthReset');
+  if (aaStrengthSlider && aaStrengthNumber) {
+    const min = Number(aaStrengthSlider.min);
+    const max = Number(aaStrengthSlider.max);
+    const applyAaStrength = (rawValue) => {
+      const parsed = Number(rawValue);
+      const baseValue = Number.isFinite(parsed) ? parsed : SIM.aaStrength;
+      SIM.aaStrength = clamp(baseValue, min, max);
+      updateAaStrengthDisplay();
+    };
+
+    aaStrengthSlider.addEventListener('input', () => applyAaStrength(aaStrengthSlider.value));
+    aaStrengthNumber.addEventListener('input', () => applyAaStrength(aaStrengthNumber.value));
+  }
+
+  if (aaStrengthResetButton) {
+    aaStrengthResetButton.addEventListener('click', () => {
+      SIM.aaStrength = computeRecommendedAaStrength(SIM.resolutionDivisor);
+      updateAaStrengthDisplay();
+    });
+  }
+
+  SIM.aaStrength = computeRecommendedAaStrength(SIM.resolutionDivisor);
   updateAaStrengthDisplay();
+  updateIterationsDisplay();
 
   const interpolationModeSelect = document.getElementById('impulseInterpolationMode');
   const interpolationModeOutput = document.getElementById('impulseInterpolationModeValue');
@@ -702,7 +775,7 @@ function bindControls() {
     };
 
     const applyInterpolationMode = (rawValue) => {
-      const value = interpolationModes.has(rawValue) ? rawValue : 'bezier';
+      const value = interpolationModes.has(rawValue) ? rawValue : 'linear';
       interpolationModeSelect.value = value;
       SIM.impulseInterpolationMode = value;
       interpolationModeOutput.textContent = modeLabels[value];
@@ -724,6 +797,7 @@ function loop() {
       const averageFrameTime = fpsAccumulatedTime / fpsFrameCount;
       const fps = 1000 / averageFrameTime;
       fpsOutput.textContent = fps.toFixed(1);
+      autoTuneIterations(fps, now);
       fpsAccumulatedTime = 0;
       fpsFrameCount = 0;
     }

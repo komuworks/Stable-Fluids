@@ -96,6 +96,20 @@
         grid-template-columns: 1fr 120px 124px;
       }
 
+      .control-row button {
+        background: rgb(31 47 86 / 70%);
+        border: 1px solid rgb(115 146 234 / 35%);
+        border-radius: 6px;
+        color: #d8e3ff;
+        font: inherit;
+        padding: 6px 10px;
+        cursor: pointer;
+      }
+
+      .control-row button:hover {
+        background: rgb(48 70 121 / 80%);
+      }
+
       .control-row--select output {
         text-align: left;
       }
@@ -114,6 +128,7 @@
       <div>ドラッグで流体に力と染料を注入</div>
       <div><code>R</code> でリセット</div>
       <div>FPS: <output id="fpsValue">--</output></div>
+      <div>反復回数(自動): <output id="iterationsValue">18</output></div>
       <div class="controls">
         <div class="control-row">
           <label for="forceAmount">力の量</label>
@@ -160,54 +175,61 @@
         </div>
         <div class="control-row">
           <label for="clickForceAmount">クリック時の力の強さ</label>
-          <input id="clickForceAmount" type="range" min="1" max="120" step="0.1" value="25" />
-          <input id="clickForceAmountNumber" type="number" min="1" max="120" step="0.1" value="25" />
-          <output for="clickForceAmount" id="clickForceAmountValue">25.0</output>
+          <input id="clickForceAmount" type="range" min="1" max="120" step="0.1" value="2.5" />
+          <input id="clickForceAmountNumber" type="number" min="1" max="120" step="0.1" value="2.5" />
+          <output for="clickForceAmount" id="clickForceAmountValue">2.5</output>
         </div>
         <div class="control-row">
           <label for="clickDyeAmount">クリック時の染料の量</label>
-          <input id="clickDyeAmount" type="range" min="0.1" max="120" step="0.1" value="12" />
-          <input id="clickDyeAmountNumber" type="number" min="0.1" max="120" step="0.1" value="12" />
-          <output for="clickDyeAmount" id="clickDyeAmountValue">12.0</output>
+          <input id="clickDyeAmount" type="range" min="0.1" max="120" step="0.1" value="50" />
+          <input id="clickDyeAmountNumber" type="number" min="0.1" max="120" step="0.1" value="50" />
+          <output for="clickDyeAmount" id="clickDyeAmountValue">50.0</output>
         </div>
         <div class="control-row">
           <label for="clickBrushSize">クリック時のブラシサイズ(px)</label>
-          <input id="clickBrushSize" type="range" min="1" max="12" step="1" value="1" />
-          <input id="clickBrushSizeNumber" type="number" min="1" max="12" step="1" value="1" />
-          <output for="clickBrushSize" id="clickBrushSizeValue">1px</output>
+          <input id="clickBrushSize" type="range" min="1" max="12" step="1" value="5" />
+          <input id="clickBrushSizeNumber" type="number" min="1" max="12" step="1" value="5" />
+          <output for="clickBrushSize" id="clickBrushSizeValue">5px</output>
         </div>
         <div class="control-row control-row--select">
           <label for="simulationResolution">シミュレーション細かさ</label>
           <select id="simulationResolution">
             <option value="1">標準 (1/1)</option>
-            <option value="2" selected>高精細 (1/2)</option>
-            <option value="4">軽量 (1/4)</option>
+            <option value="2">高精細 (1/2)</option>
+            <option value="4" selected>軽量 (1/4)</option>
             <option value="8">省電力 (1/8)</option>
             <option value="16">超軽量 (1/16)</option>
           </select>
-          <output id="simulationResolutionValue">1/2</output>
+          <output id="simulationResolutionValue">1/4</output>
         </div>
         <div class="control-row control-row--select">
           <label for="aaMode">AA モード</label>
           <select id="aaMode">
             <option value="off">off</option>
             <option value="linear">linear</option>
-            <option value="blur">blur</option>
+            <option value="blur" selected>blur</option>
             <option value="fxaa">fxaa相当</option>
           </select>
-          <output id="aaModeValue">FXAA相当</output>
+          <output id="aaModeValue">ブラー</output>
+        </div>
+        <div class="control-row">
+          <label for="aaStrength">AA 強度</label>
+          <input id="aaStrength" type="range" min="0" max="1.85" step="0.01" value="0" />
+          <input id="aaStrengthNumber" type="number" min="0" max="1.85" step="0.01" value="0" />
+          <output id="aaStrengthValue">0.00</output>
         </div>
         <div class="control-row control-row--select">
-          <label for="aaStrengthValue">AA 強度(推奨)</label>
-          <output id="aaStrengthValue">0.00</output>
+          <label for="aaStrengthReset">AA 強度デフォルト</label>
+          <button id="aaStrengthReset" type="button">推奨値に戻す</button>
+          <output id="aaStrengthDefaultValue">推奨 0.00</output>
         </div>
         <div class="control-row control-row--select">
           <label for="impulseInterpolationMode">移動補完</label>
           <select id="impulseInterpolationMode">
             <option value="bezier">ベジェ</option>
-            <option value="linear">直線</option>
+            <option value="linear" selected>直線</option>
           </select>
-          <output id="impulseInterpolationModeValue">ベジェ</output>
+          <output id="impulseInterpolationModeValue">直線</output>
         </div>
       </div>
     </div>
